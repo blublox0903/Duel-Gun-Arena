@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>CPU Duel Arena</title>
-    <link rel="stylesheet" href="./styles.css?v=20260522-4" />
+    <link rel="stylesheet" href="./styles.css?v=20260522-5" />
   </head>
   <body>
     <main id="game">
@@ -46,6 +46,7 @@
 
         <div class="crosshair" aria-hidden="true"></div>
         <div id="damageNumber" aria-hidden="true"></div>
+        <div id="roundBanner" aria-live="polite"></div>
         <div class="scope-overlay" aria-hidden="true"></div>
         <div id="lockPrompt">Click game to lock mouse. Press Esc to unlock.</div>
         <div class="top-buttons">
@@ -80,6 +81,10 @@
             <button type="button" data-mode="2v2">2v2</button>
             <button type="button" data-mode="juggernaut">Juggernaut</button>
           </div>
+          <div id="onlineModeMenu" hidden>
+            <button type="button" data-mode="online">Online 1v1</button>
+            <button type="button" data-mode="online2v2">Online 2v2</button>
+          </div>
           <div id="loadoutMenu" hidden>
             <span id="loadoutTitle">primary</span>
             <div class="loadout-options"></div>
@@ -107,6 +112,6 @@
         }
       }
     </script>
-    <script type="module" src="./game.js?v=20260522-4"></script>
+    <script type="module" src="./game.js?v=20260522-5"></script>
   </body>
 </html>

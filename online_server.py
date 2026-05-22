@@ -12,8 +12,10 @@ ROOT = Path(__file__).resolve().parent
 GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 PORT = int(os.environ.get("PORT", "4173"))
 
-waiting_player = None
+waiting_queues = {"online": [], "online2v2": []}
 rooms = {}
+MODE_SIZE = {"online": 2, "online2v2": 4}
+MODE_ROLES = {"online": ["a", "b"], "online2v2": ["a1", "a2", "b1", "b2"]}
 
 
 class Client:
@@ -22,6 +24,7 @@ class Client:
         self.writer = writer
         self.room = None
         self.role = None
+        self.mode = "online"
 
     async def send(self, payload):
         data = json.dumps(payload, separators=(",", ":")).encode("utf-8")
@@ -125,25 +128,31 @@ async def read_ws_message(reader):
     return payload.decode("utf-8", "replace")
 
 
-async def pair_client(client):
-    global waiting_player
-    if waiting_player and waiting_player.writer.is_closing():
-        waiting_player = None
-    if waiting_player is None:
-        waiting_player = client
-        await client.send({"type": "waiting"})
+async def pair_client(client, mode):
+    mode = mode if mode in MODE_SIZE else "online"
+    client.mode = mode
+    queue = waiting_queues[mode]
+    queue[:] = [queued for queued in queue if not queued.writer.is_closing()]
+    if client not in queue:
+        queue.append(client)
+    needed = MODE_SIZE[mode]
+    if len(queue) < needed:
+        await client.send({"type": "waiting", "count": len(queue), "needed": needed})
+        for queued in queue:
+            if queued is not client:
+                await queued.send({"type": "waiting", "count": len(queue), "needed": needed})
         return
 
     room_id = os.urandom(6).hex()
-    other = waiting_player
-    waiting_player = None
-    rooms[room_id] = [other, client]
-    other.room = room_id
-    other.role = "a"
-    client.room = room_id
-    client.role = "b"
-    await other.send({"type": "matched", "role": "a"})
-    await client.send({"type": "matched", "role": "b"})
+    clients = queue[:needed]
+    del queue[:needed]
+    roles = MODE_ROLES[mode]
+    rooms[room_id] = clients
+    for index, matched_client in enumerate(clients):
+        matched_client.room = room_id
+        matched_client.role = roles[index]
+        matched_client.mode = mode
+        await matched_client.send({"type": "matched", "role": matched_client.role, "roles": roles, "mode": mode})
 
 
 async def broadcast_to_peer(client, payload):
@@ -155,9 +164,9 @@ async def broadcast_to_peer(client, payload):
 
 
 async def cleanup_client(client):
-    global waiting_player
-    if waiting_player is client:
-        waiting_player = None
+    for queue in waiting_queues.values():
+        if client in queue:
+            queue.remove(client)
     if client.room and client.room in rooms:
         peers = rooms.pop(client.room)
         for peer in peers:
@@ -177,7 +186,7 @@ async def handle_ws(reader, writer, headers):
                 break
             message = json.loads(text)
             if message.get("type") == "join":
-                await pair_client(client)
+                await pair_client(client, message.get("mode", "online"))
             elif message.get("type") in {"state", "damage"}:
                 await broadcast_to_peer(client, message)
     except Exception:

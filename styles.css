@@ -66,7 +66,8 @@ body.spectating .controls {
   display: none;
 }
 
-body.mode-2v2:not(.in-menu) .bar-block.cpu {
+body.mode-2v2:not(.in-menu) .bar-block.cpu,
+body.mode-online2v2:not(.in-menu) .bar-block.cpu {
   display: none;
 }
 
@@ -204,7 +205,8 @@ body.mode-2v2:not(.in-menu) .bar-block.cpu {
 .quickbar button,
 #startButton,
 #onlineButton,
-#modeMenu button {
+#modeMenu button,
+#onlineModeMenu button {
   min-height: 44px;
   border: 1px solid rgb(255 255 255 / 0.16);
   border-radius: 8px;
@@ -276,6 +278,30 @@ body.aiming .crosshair {
 
 #damageNumber.headshot {
   color: #ff3333;
+}
+
+#roundBanner {
+  position: absolute;
+  top: 84px;
+  left: 50%;
+  min-width: min(420px, calc(100vw - 36px));
+  padding: 10px 14px;
+  transform: translateX(-50%);
+  border: 1px solid rgb(255 255 255 / 0.2);
+  border-radius: 8px;
+  background: rgb(6 8 11 / 0.76);
+  color: #f8fbff;
+  font-size: 16px;
+  font-weight: 850;
+  text-align: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 140ms ease;
+  backdrop-filter: blur(10px);
+}
+
+#roundBanner.show {
+  opacity: 1;
 }
 
 .scope-overlay {
@@ -674,14 +700,20 @@ p {
   gap: 10px;
 }
 
-#modeMenu {
+#modeMenu,
+#onlineModeMenu {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
   margin-top: 12px;
 }
 
-#modeMenu[hidden] {
+#onlineModeMenu {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+#modeMenu[hidden],
+#onlineModeMenu[hidden] {
   display: none;
 }
 
@@ -689,7 +721,8 @@ p {
   display: none;
 }
 
-#modeMenu button {
+#modeMenu button,
+#onlineModeMenu button {
   border-color: rgb(244 211 94 / 0.52);
   background: rgb(6 8 11 / 0.78);
 }

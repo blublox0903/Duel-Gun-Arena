@@ -338,6 +338,12 @@ let selectedMode = "1v1";
 let menuState = "main";
 let spectatingActor = null;
 let loadoutStep = 0;
+let roundEnding = false;
+let roundEndingUntil = 0;
+let roundWinnerActor = null;
+let preRoundFreeze = false;
+let preRoundEndsAt = 0;
+let changingLoadoutMidRound = false;
 let playerLoadout = {
   primary: "rifle",
   secondary: "handgun",
@@ -357,6 +363,8 @@ let onlineConnected = false;
 let onlineMatched = false;
 let onlineRole = null;
 let onlineLastSend = 0;
+const onlineActorsByRole = new Map();
+const onlineRolesByActor = new Map();
 
 const ui = {
   playerHp: document.querySelector("#playerHp"),
@@ -371,11 +379,13 @@ const ui = {
   ammoText: document.querySelector("#ammoText"),
   weaponHint: document.querySelector("#weaponHint"),
   damageNumber: document.querySelector("#damageNumber"),
+  roundBanner: document.querySelector("#roundBanner"),
   lockPrompt: document.querySelector("#lockPrompt"),
   overlay: document.querySelector("#overlay"),
   startButton: document.querySelector("#startButton"),
   onlineButton: document.querySelector("#onlineButton"),
   modeMenu: document.querySelector("#modeMenu"),
+  onlineModeMenu: document.querySelector("#onlineModeMenu"),
   loadoutMenu: document.querySelector("#loadoutMenu"),
   loadoutTitle: document.querySelector("#loadoutTitle"),
   pauseButton: document.querySelector("#pauseButton"),
@@ -419,6 +429,20 @@ scene.add(enemyCpu2Mesh);
 const playerProxy = makeFighter(0x4fb477, 0x27313a);
 playerProxy.visible = false;
 scene.add(playerProxy);
+
+function isOnlineMode() {
+  return selectedMode === "online" || selectedMode === "online2v2";
+}
+
+function showRoundBanner(text) {
+  ui.roundBanner.textContent = text;
+  ui.roundBanner.classList.add("show");
+}
+
+function hideRoundBanner() {
+  ui.roundBanner.textContent = "";
+  ui.roundBanner.classList.remove("show");
+}
 
 function buildWorld() {
   const hemi = new THREE.HemisphereLight(0xbfd8ff, 0x1b232c, 1.6);
@@ -1412,9 +1436,13 @@ function makeFighter(bodyColor, accentColor) {
 function showMainMenu() {
   clearRoundCountdown();
   releasePointerLock();
-  if (selectedMode === "online") closeOnline();
+  if (isOnlineMode()) closeOnline();
   menuState = "main";
   spectatingActor = null;
+  roundEnding = false;
+  preRoundFreeze = false;
+  changingLoadoutMidRound = false;
+  hideRoundBanner();
   gameOver = true;
   matchStarted = false;
   matchFinished = true;
@@ -1426,6 +1454,7 @@ function showMainMenu() {
   ui.startButton.style.display = "";
   ui.onlineButton.style.display = "";
   ui.modeMenu.hidden = true;
+  ui.onlineModeMenu.hidden = true;
   ui.loadoutMenu.hidden = true;
   ui.overlay.classList.add("show");
   document.body.classList.add("in-menu");
@@ -1450,6 +1479,20 @@ function showModeMenu() {
   ui.startButton.style.display = "none";
   ui.onlineButton.style.display = "none";
   ui.modeMenu.hidden = false;
+  ui.onlineModeMenu.hidden = true;
+  ui.loadoutMenu.hidden = true;
+}
+
+function showOnlineModeMenu() {
+  menuState = "online-mode";
+  document.body.classList.add("choosing-mode");
+  document.body.classList.remove("choosing-loadout");
+  ui.overlay.querySelector("h1").textContent = "Choose Online Mode";
+  ui.overlay.querySelector("p").textContent = "Pick a real-player match.";
+  ui.startButton.style.display = "none";
+  ui.onlineButton.style.display = "none";
+  ui.modeMenu.hidden = true;
+  ui.onlineModeMenu.hidden = false;
   ui.loadoutMenu.hidden = true;
 }
 
@@ -1457,11 +1500,13 @@ function chooseMode(mode) {
   selectedMode = mode;
   matchFinished = true;
   ui.modeMenu.hidden = true;
+  ui.onlineModeMenu.hidden = true;
   updateModeClass();
   startLoadoutSelection();
 }
 
-function startLoadoutSelection() {
+function startLoadoutSelection(midRound = false) {
+  changingLoadoutMidRound = midRound;
   loadoutStep = 0;
   menuState = "loadout";
   document.body.classList.add("choosing-loadout");
@@ -1470,6 +1515,7 @@ function startLoadoutSelection() {
   ui.startButton.style.display = "none";
   ui.onlineButton.style.display = "none";
   ui.modeMenu.hidden = true;
+  ui.onlineModeMenu.hidden = true;
   ui.loadoutMenu.hidden = false;
   renderLoadoutStep();
 }
@@ -1505,7 +1551,14 @@ function chooseLoadoutWeapon(weaponKey) {
   ui.loadoutMenu.hidden = true;
   ui.overlay.classList.remove("show");
   document.body.classList.remove("in-menu", "choosing-loadout");
-  if (selectedMode === "online") {
+  if (changingLoadoutMidRound) {
+    changingLoadoutMidRound = false;
+    menuState = preRoundFreeze ? "countdown" : "playing";
+    setWeapon(playerLoadout.primary);
+    requestPointerLock();
+    return;
+  }
+  if (isOnlineMode()) {
     startOnlineMatchmaking();
     return;
   }
@@ -1539,10 +1592,13 @@ function startOnlineMatchmaking() {
   ui.pauseButton.textContent = "Pause";
   ui.overlay.classList.add("show");
   ui.overlay.querySelector("h1").textContent = "Finding Online Match";
-  ui.overlay.querySelector("p").textContent = "Waiting for another player to join Online 1v1.";
+  ui.overlay.querySelector("p").textContent = selectedMode === "online2v2"
+    ? "Waiting for four real players to join Online 2v2."
+    : "Waiting for another player to join Online 1v1.";
   ui.startButton.style.display = "none";
   ui.onlineButton.style.display = "none";
   ui.modeMenu.hidden = true;
+  ui.onlineModeMenu.hidden = true;
   ui.loadoutMenu.hidden = true;
   connectOnline();
 }
@@ -1557,7 +1613,7 @@ function connectOnline() {
   onlineSocket = new WebSocket(onlineUrl());
   onlineSocket.addEventListener("open", () => {
     onlineConnected = true;
-    sendOnline({ type: "join" });
+    sendOnline({ type: "join", mode: selectedMode });
   });
   onlineSocket.addEventListener("message", (event) => {
     try {
@@ -1569,7 +1625,7 @@ function connectOnline() {
   onlineSocket.addEventListener("close", () => {
     onlineConnected = false;
     onlineMatched = false;
-    if (selectedMode === "online" && !matchFinished) {
+    if (isOnlineMode() && !matchFinished) {
       gameOver = true;
       releasePointerLock();
       ui.overlay.classList.add("show");
@@ -1587,34 +1643,84 @@ function sendOnline(message) {
   onlineSocket.send(JSON.stringify(message));
 }
 
+function onlineTeam(role) {
+  return role?.startsWith("b") ? "b" : "a";
+}
+
+function onlineSlot(role) {
+  return role?.endsWith("2") ? 1 : 0;
+}
+
+function onlinePlayerSpawn() {
+  if (selectedMode === "online2v2") {
+    return { x: onlineSlot(onlineRole) ? 5 : -5, z: 18 };
+  }
+  return { x: 0, z: 18 };
+}
+
+function roleIsEnemy(role) {
+  return onlineTeam(role) !== onlineTeam(onlineRole);
+}
+
+function setupOnlineActors(roles = []) {
+  onlineActorsByRole.clear();
+  onlineRolesByActor.clear();
+  if (selectedMode === "online2v2") {
+    const allRoles = roles.length ? roles : ["a1", "a2", "b1", "b2"];
+    let allyIndex = 0;
+    let enemyIndex = 0;
+    for (const role of allRoles) {
+      if (role === onlineRole) continue;
+      const actor = roleIsEnemy(role) ? enemyCpus[enemyIndex++] : allyCpus[allyIndex++];
+      if (!actor) continue;
+      actor.team = roleIsEnemy(role) ? "enemy" : "player";
+      onlineActorsByRole.set(role, actor);
+      onlineRolesByActor.set(actor, role);
+    }
+    return;
+  }
+  const role = onlineRole === "a" ? "b" : "a";
+  cpu.team = "enemy";
+  onlineActorsByRole.set(role, cpu);
+  onlineRolesByActor.set(cpu, role);
+}
+
 function closeOnline() {
   if (onlineSocket) onlineSocket.close();
   onlineSocket = null;
   onlineConnected = false;
   onlineMatched = false;
   onlineRole = null;
+  onlineActorsByRole.clear();
+  onlineRolesByActor.clear();
 }
 
 function handleOnlineMessage(message) {
   if (message.type === "waiting") {
     ui.overlay.querySelector("h1").textContent = "Waiting For Player";
-    ui.overlay.querySelector("p").textContent = "Share this website link with a friend. The match starts when they join.";
+    const needed = message.needed ?? (selectedMode === "online2v2" ? 4 : 2);
+    const count = message.count ?? 1;
+    ui.overlay.querySelector("p").textContent = `Share this website link with friends. Waiting for ${count}/${needed} players.`;
     return;
   }
   if (message.type === "matched") {
     onlineMatched = true;
     onlineRole = message.role;
+    setupOnlineActors(message.roles);
     ui.overlay.querySelector("h1").textContent = "Online Match Found";
     ui.overlay.querySelector("p").textContent = "Battle starts soon.";
     beginRoundCountdown(4);
     return;
   }
   if (message.type === "state") {
-    applyOnlineState(message.state);
+    applyOnlineState(message);
     return;
   }
   if (message.type === "damage" && !gameOver) {
-    damage(player, message.amount ?? 0, null);
+    if (!message.targetRole || message.targetRole === onlineRole) {
+      const attacker = onlineActorsByRole.get(message.role) ?? null;
+      damage(player, message.amount ?? 0, attacker);
+    }
     return;
   }
   if (message.type === "peer-left") {
@@ -1637,33 +1743,45 @@ function mirrorOnlineYaw(yaw) {
   return yaw ?? 0;
 }
 
-function applyOnlineState(state) {
-  if (!state || selectedMode !== "online") return;
-  const position = mirrorOnlineVector(state.position);
-  cpu.active = true;
-  cpu.team = "enemy";
-  cpu.hp = state.hp ?? cpu.hp;
-  cpu.maxHp = MAX_HP;
-  cpu.weapon = state.weapon ?? cpu.weapon;
-  cpu.height = state.height ?? cpu.height;
-  cpu.targetHeight = cpu.height;
-  cpu.feetY = Math.max(0, position.y - cpu.height);
-  cpu.position.copy(position);
-  cpu.facingYaw = mirrorOnlineYaw(state.yaw);
-  if (cpu.mesh) {
-    cpu.mesh.visible = cpu.hp > 0;
-    cpu.mesh.position.set(cpu.position.x, cpu.feetY, cpu.position.z);
-    cpu.mesh.rotation.y = cpu.facingYaw;
+function applyOnlineState(message) {
+  const state = message.state;
+  if (!state || !isOnlineMode()) return;
+  const role = message.role ?? (onlineRole === "a" ? "b" : "a");
+  const actor = onlineActorsByRole.get(role);
+  if (!actor) return;
+  const enemy = roleIsEnemy(role);
+  const position = enemy ? mirrorOnlineVector(state.position) : new THREE.Vector3(state.position?.x ?? 0, state.position?.y ?? 1.7, state.position?.z ?? 18);
+  actor.active = true;
+  actor.team = enemy ? "enemy" : "player";
+  actor.hp = state.hp ?? actor.hp;
+  actor.maxHp = MAX_HP;
+  actor.weapon = state.weapon ?? actor.weapon;
+  actor.height = state.height ?? actor.height;
+  actor.targetHeight = actor.height;
+  actor.feetY = Math.max(0, position.y - actor.height);
+  actor.position.copy(position);
+  actor.facingYaw = enemy ? mirrorOnlineYaw(state.yaw) : state.yaw ?? actor.facingYaw;
+  if (actor.mesh) {
+    actor.mesh.visible = actor.hp > 0;
+    actor.mesh.position.set(actor.position.x, actor.feetY, actor.position.z);
+    actor.mesh.rotation.y = actor.facingYaw;
+  }
+  if (!roundEnding && !preRoundFreeze && actor.hp <= 0) {
+    if (actor.team === "player" && !playerTeamAlive()) endRound(false);
+    if (actor.team === "enemy" && activeEnemyActors().every((enemyActor) => enemyActor.hp <= 0)) endRound(true, player);
   }
 }
 
 function updateOnline(now, dt) {
-  if (selectedMode !== "online" || !onlineMatched) return;
-  if (cpu.active && cpu.mesh) updateFighterPose(cpu, now, dt);
+  if (!isOnlineMode() || !onlineMatched) return;
+  onlineActorsByRole.forEach((actor) => {
+    if (actor.active && actor.mesh) updateFighterPose(actor, now, dt);
+  });
   if (now - onlineLastSend < 50) return;
   onlineLastSend = now;
   sendOnline({
     type: "state",
+    role: onlineRole,
     state: {
       hp: player.hp,
       position: { x: player.position.x, y: player.position.y, z: player.position.z },
@@ -1763,15 +1881,18 @@ function resetCombatActor(actor, x, z, maxHp = MAX_HP, visualScale = 1) {
   }
 }
 
-function startRound() {
-  clearRoundCountdown();
+function startRound(frozenCountdown = false) {
+  if (!frozenCountdown) clearRoundCountdown();
   menuState = "playing";
   spectatingActor = null;
+  roundEnding = false;
+  roundWinnerActor = null;
   document.body.classList.remove("in-menu", "spectating");
   paused = false;
   ui.pauseButton.textContent = "Pause";
+  const spawn = onlinePlayerSpawn();
   player.hp = MAX_HP;
-  player.position.set(0, 1.7, 18);
+  player.position.set(spawn.x, 1.7, spawn.z);
   player.height = 1.7;
   player.targetHeight = 1.7;
   player.slideUntil = 0;
@@ -1797,15 +1918,20 @@ function startRound() {
   player.trowelBuildReady = 0;
 
   cpuActors.forEach(deactivateCombatActor);
-  if (selectedMode === "online") {
-    resetCombatActor(cpu, 0, -16);
-    cpu.loadout = {
-      primary: "rifle",
-      secondary: "handgun",
-      melee: "fist",
-      utility: "grenade",
-    };
-    cpu.weapon = "rifle";
+  if (isOnlineMode()) {
+    setupOnlineActors([...onlineActorsByRole.keys(), onlineRole].filter(Boolean));
+    onlineActorsByRole.forEach((actor, role) => {
+      const enemy = roleIsEnemy(role);
+      const x = onlineSlot(role) ? 5 : -5;
+      resetCombatActor(actor, enemy ? -x : x, enemy ? -18 : 18);
+      actor.loadout = {
+        primary: "rifle",
+        secondary: "handgun",
+        melee: "fist",
+        utility: "grenade",
+      };
+      actor.weapon = "rifle";
+    });
   } else if (selectedMode === "juggernaut") {
     resetCombatActor(cpu, 0, -17, 3000, 1.28);
     [
@@ -1832,9 +1958,10 @@ function startRound() {
   aimHeld = false;
   clearDamageNumber();
   ui.damageNumber.classList.remove("show", "headshot");
+  preRoundFreeze = frozenCountdown;
   gameOver = false;
   matchStarted = true;
-  matchStartTime = performance.now();
+  matchStartTime = frozenCountdown ? preRoundEndsAt : performance.now();
   ui.overlay.classList.remove("show");
   requestPointerLock();
   updateQuickbar();
@@ -1848,18 +1975,22 @@ function beginRoundCountdown(seconds) {
   clearRoundCountdown();
   paused = false;
   ui.pauseButton.textContent = "Pause";
-  gameOver = true;
   fireHeld = false;
   aimHeld = false;
   updateAimState();
   ui.startButton.style.display = "none";
   ui.onlineButton.style.display = "none";
-  ui.overlay.classList.add("show");
+  ui.modeMenu.hidden = true;
+  ui.onlineModeMenu.hidden = true;
+  ui.loadoutMenu.hidden = true;
+  ui.overlay.classList.remove("show");
+  preRoundFreeze = true;
+  preRoundEndsAt = performance.now() + seconds * 1000;
+  startRound(true);
 
   let remaining = seconds;
   const drawCountdown = () => {
-    ui.overlay.querySelector("h1").textContent = `Round ${roundNumber}`;
-    ui.overlay.querySelector("p").textContent = `${selectedMode} | ${playerScore} - ${cpuScore}. Battle starts in ${remaining}`;
+    showRoundBanner(`Round ${roundNumber}: ${selectedMode} | ${playerScore} - ${cpuScore}. Battle starts in ${remaining}. Press M to switch weapons.`);
   };
   drawCountdown();
 
@@ -1867,7 +1998,9 @@ function beginRoundCountdown(seconds) {
     remaining -= 1;
     if (remaining <= 0) {
       clearRoundCountdown();
-      startRound();
+      preRoundFreeze = false;
+      if (!changingLoadoutMidRound) menuState = "playing";
+      hideRoundBanner();
       return;
     }
     drawCountdown();
@@ -1955,6 +2088,10 @@ function setWeapon(weapon) {
   updateAimState();
 }
 
+function controlsFrozen() {
+  return preRoundFreeze || changingLoadoutMidRound;
+}
+
 function updateWeaponClass() {
   document.body.classList.remove(
     "weapon-rifle",
@@ -1978,7 +2115,8 @@ function updateModeClass() {
   document.body.classList.toggle("mode-2v2", selectedMode === "2v2");
   document.body.classList.toggle("mode-1v1", selectedMode === "1v1");
   document.body.classList.toggle("mode-juggernaut", selectedMode === "juggernaut");
-  document.body.classList.toggle("mode-online", selectedMode === "online");
+  document.body.classList.toggle("mode-online", isOnlineMode());
+  document.body.classList.toggle("mode-online2v2", selectedMode === "online2v2");
 }
 
 function updateQuickbar() {
@@ -2027,7 +2165,7 @@ function chooseAttackTarget(actor) {
 }
 
 function updateHud() {
-  ui.enemyLabel.textContent = selectedMode === "online" ? "Player" : "CPU";
+  ui.enemyLabel.textContent = isOnlineMode() ? "Player" : "CPU";
   ui.playerHp.style.width = `${Math.max(0, (player.hp / MAX_HP) * 100)}%`;
   const enemies = livingEnemiesOf(player);
   const enemyMaxHp = Math.max(MAX_HP, activeEnemyActors().reduce((sum, actor) => sum + (actor.maxHp ?? MAX_HP), 0));
@@ -2164,12 +2302,12 @@ function toggleHackFlight() {
 }
 
 function playerAttack(now) {
-  if (isPlayerSpectating()) return;
+  if (isPlayerSpectating() || controlsFrozen()) return;
   attack(player, chooseAttackTarget(player), now, true);
 }
 
 function scytheDash(now) {
-  if (player.weapon !== "scythe" || player.hp <= 0 || gameOver || paused || now < player.scytheDashReady) return;
+  if (player.weapon !== "scythe" || player.hp <= 0 || gameOver || paused || controlsFrozen() || now < player.scytheDashReady) return;
   const weapon = weapons.scythe;
   const direction = new THREE.Vector3();
   camera.getWorldDirection(direction);
@@ -2723,8 +2861,8 @@ function damage(target, amount, attacker = null) {
     return;
   }
   target.hp = Math.max(0, target.hp - amount);
-  if (selectedMode === "online" && attacker === player && target === cpu) {
-    sendOnline({ type: "damage", amount });
+  if (isOnlineMode() && attacker === player && target.team === "enemy") {
+    sendOnline({ type: "damage", role: onlineRole, targetRole: onlineRolesByActor.get(target), amount });
   }
   if (target.hp > 0) return;
   if (target.mesh) target.mesh.visible = false;
@@ -2732,12 +2870,12 @@ function damage(target, amount, attacker = null) {
     if (selectedMode !== "1v1" && livingPlayerTeamCpus().length > 0) {
       startSpectating(livingPlayerTeamCpus()[0]);
     } else {
-      endRound(false);
+      endRound(false, attacker);
     }
   } else if (target.team === "player" && !playerTeamAlive()) {
-    endRound(false);
+    endRound(false, attacker);
   } else if (target.team === "enemy" && activeEnemyActors().every((actor) => actor.hp <= 0)) {
-    endRound(true);
+    endRound(true, attacker);
   }
 }
 
@@ -2754,38 +2892,67 @@ function startSpectating(actor) {
   ui.startButton.style.display = "none";
   ui.onlineButton.style.display = "none";
   ui.modeMenu.hidden = true;
+  ui.onlineModeMenu.hidden = true;
   ui.overlay.classList.add("show");
   setTimeout(() => {
     if (isPlayerSpectating()) ui.overlay.classList.remove("show");
   }, 1800);
 }
 
-function endRound(playerWon) {
-  gameOver = true;
+function endRound(playerWon, winnerActor = null) {
+  if (roundEnding || matchFinished) return;
+  gameOver = false;
   menuState = "roundOver";
-  spectatingActor = null;
-  document.body.classList.remove("spectating");
-  releasePointerLock();
+  roundEnding = true;
+  roundEndingUntil = performance.now() + 3000;
+  roundWinnerActor = winnerActor && winnerActor.hp > 0 ? winnerActor : playerWon ? player : activeEnemyActors().find((actor) => actor.hp > 0) ?? cpu;
+  preRoundFreeze = false;
+  fireHeld = false;
+  aimHeld = false;
+  updateAimState();
+  if (playerWon && player.hp > 0) {
+    spectatingActor = null;
+    document.body.classList.remove("spectating");
+    requestPointerLock();
+  } else {
+    spectatingActor = roundWinnerActor;
+    document.body.classList.add("spectating");
+    releasePointerLock();
+  }
   if (playerWon) playerScore += 1;
   else cpuScore += 1;
   updateScoreHud();
+  ui.overlay.classList.remove("show");
+  showRoundBanner(`${playerWon ? "Your side" : "Enemy side"} won the round. Next round in 3`);
 
   const matchWon = playerScore >= MATCH_POINTS || cpuScore >= MATCH_POINTS;
   matchFinished = matchWon;
-  if (matchWon) {
+}
+
+function finishRoundEnding() {
+  if (!roundEnding || performance.now() < roundEndingUntil) return;
+  roundEnding = false;
+  hideRoundBanner();
+  spectatingActor = null;
+  document.body.classList.remove("spectating");
+  if (matchFinished) {
+    gameOver = true;
+    releasePointerLock();
     paused = false;
     ui.pauseButton.textContent = "Pause";
-    ui.overlay.querySelector("h1").textContent = playerWon ? "Your Team Wins" : "Enemy Team Wins";
+    const playerWonMatch = playerScore >= MATCH_POINTS;
+    ui.overlay.querySelector("h1").textContent = playerWonMatch ? "Your Team Wins" : "Enemy Team Wins";
     ui.overlay.querySelector("p").textContent = `${selectedMode} finished ${playerScore} - ${cpuScore}. First to ${MATCH_POINTS} points is complete.`;
     ui.startButton.textContent = "Back To Menu";
     ui.startButton.style.display = "";
     ui.onlineButton.style.display = "none";
     ui.modeMenu.hidden = true;
+    ui.onlineModeMenu.hidden = true;
     ui.overlay.classList.add("show");
-  } else {
-    roundNumber += 1;
-    beginRoundCountdown(4);
+    return;
   }
+  roundNumber += 1;
+  beginRoundCountdown(4);
 }
 
 function updateScoreHud() {
@@ -2805,6 +2972,7 @@ function togglePause() {
     ui.startButton.style.display = "none";
     ui.onlineButton.style.display = "none";
     ui.modeMenu.hidden = true;
+    ui.onlineModeMenu.hidden = true;
     ui.overlay.classList.add("show");
   } else {
     fireHeld = false;
@@ -3157,6 +3325,17 @@ function updatePlayer(dt) {
     return;
   }
   updateSoftLook(dt);
+  if (controlsFrozen()) {
+    player.slideUntil = 0;
+    player.dashUntil = 0;
+    player.targetHeight = 1.7;
+    player.height = THREE.MathUtils.lerp(player.height, player.targetHeight, 1 - Math.pow(0.001, dt));
+    camera.position.copy(player.position);
+    camera.rotation.y = player.yaw + Math.PI;
+    camera.rotation.x = player.pitch;
+    camera.rotation.z = THREE.MathUtils.lerp(camera.rotation.z, 0, 1 - Math.pow(0.0005, dt));
+    return;
+  }
   const forward = tmp.set(Math.sin(player.yaw), 0, Math.cos(player.yaw));
   const right = tmp2.set(-Math.cos(player.yaw), 0, Math.sin(player.yaw));
   const move = new THREE.Vector3();
@@ -3576,6 +3755,11 @@ function animate() {
   requestAnimationFrame(animate);
   const dt = Math.min(clock.getDelta(), 0.05);
   const now = performance.now();
+  if (roundEnding) {
+    const remaining = Math.max(1, Math.ceil((roundEndingUntil - now) / 1000));
+    showRoundBanner(`${playerScore >= MATCH_POINTS || cpuScore >= MATCH_POINTS ? "Match ends" : "Next round"} in ${remaining}`);
+    finishRoundEnding();
+  }
   updateAimCamera(dt);
   updateSmokeClouds(now, dt);
   updateBrickWalls(now, dt);
@@ -3588,10 +3772,10 @@ function animate() {
       updatePlayer(dt);
       updateAutoFire(now);
     }
-    updateBurstFire(now);
-    if (selectedMode === "online") updateOnline(now, dt);
-    else cpuActors.forEach((actor) => updateCpu(now, dt, actor));
-    updateProjectiles(dt);
+    if (!controlsFrozen()) updateBurstFire(now);
+    if (isOnlineMode()) updateOnline(now, dt);
+    else if (!preRoundFreeze) cpuActors.forEach((actor) => updateCpu(now, dt, actor));
+    if (!preRoundFreeze) updateProjectiles(dt);
   } else if (!matchStarted || menuState === "main" || menuState === "mode") {
     updateMenuPreview();
   }
@@ -4002,7 +4186,7 @@ function animateJumpPads(now) {
 }
 
 function updateAutoFire(now) {
-  if (!fireHeld || !weapons[player.weapon]?.auto || !isPointerLocked() || isPlayerSpectating()) return;
+  if (!fireHeld || !weapons[player.weapon]?.auto || !isPointerLocked() || isPlayerSpectating() || controlsFrozen()) return;
   playerAttack(now);
 }
 
@@ -4012,13 +4196,21 @@ window.addEventListener("keydown", (event) => {
     if (event.code === "Escape") closeHackDialog();
     return;
   }
-  if (["KeyW", "KeyA", "KeyS", "KeyD", "KeyC", "KeyQ", "Space"].includes(event.code)) {
+  if (["KeyW", "KeyA", "KeyS", "KeyD", "KeyC", "KeyQ", "KeyM", "Space"].includes(event.code)) {
     event.preventDefault();
   }
   const wasPressed = keys.has(event.code);
   keys.add(event.code);
   if (event.code === "KeyP") togglePause();
   if (event.code === "KeyH" && !wasPressed) toggleHack();
+  if (event.code === "KeyM" && !wasPressed && preRoundFreeze) {
+    fireHeld = false;
+    aimHeld = false;
+    updateAimState();
+    releasePointerLock();
+    startLoadoutSelection(true);
+    return;
+  }
   if (isPlayerSpectating()) {
     if (event.code === "Escape") releasePointerLock();
     return;
@@ -4027,9 +4219,9 @@ window.addEventListener("keydown", (event) => {
   if (event.code === "Digit2") setWeapon(playerLoadout.secondary);
   if (event.code === "Digit3") setWeapon(playerLoadout.melee);
   if (event.code === "Digit4") setWeapon(playerLoadout.utility);
-  if (event.code === "KeyQ" && !wasPressed) quickMelee(performance.now());
-  if (event.code === "KeyR") reload(player, performance.now());
-  if (event.code === "Space" && !wasPressed && hackEnabled && !gameOver) {
+  if (event.code === "KeyQ" && !wasPressed && !controlsFrozen()) quickMelee(performance.now());
+  if (event.code === "KeyR" && !controlsFrozen()) reload(player, performance.now());
+  if (event.code === "Space" && !wasPressed && hackEnabled && !gameOver && !controlsFrozen()) {
     const now = performance.now();
     if (now - lastSpaceTap < 340) {
       lastSpaceTap = 0;
@@ -4038,11 +4230,11 @@ window.addEventListener("keydown", (event) => {
     }
     lastSpaceTap = now;
   }
-  if (event.code === "Space" && !wasPressed && !gameOver && player.grounded) {
+  if (event.code === "Space" && !wasPressed && !gameOver && !controlsFrozen() && player.grounded) {
     player.verticalVelocity = jumpVelocity;
     player.grounded = false;
   }
-  if (event.code === "KeyC" && !wasPressed && !gameOver && !(hackEnabled && hackFlying)) startSlideOrCrouch(performance.now());
+  if (event.code === "KeyC" && !wasPressed && !gameOver && !controlsFrozen() && !(hackEnabled && hackFlying)) startSlideOrCrouch(performance.now());
   if (event.code === "Escape") releasePointerLock();
 });
 window.addEventListener("keyup", (event) => {
@@ -4052,7 +4244,7 @@ window.addEventListener("keyup", (event) => {
   }
 });
 window.addEventListener("mousemove", (event) => {
-  if (gameOver || paused || isPlayerSpectating() || !isPointerLocked()) return;
+  if (gameOver || paused || changingLoadoutMidRound || isPlayerSpectating() || !isPointerLocked()) return;
   const nativeLocked = document.pointerLockElement === canvas;
   if (!nativeLocked) {
     softTurnInput = edgeInput(event.clientX, window.innerWidth);
@@ -4068,10 +4260,11 @@ window.addEventListener("mousedown", (event) => {
   if (gameOver || paused || isPlayerSpectating()) return;
   if (!isPointerLocked()) {
     requestPointerLock();
-    if (event.button === 2) aimHeld = canAimCurrentWeapon();
+    if (event.button === 2 && !controlsFrozen()) aimHeld = canAimCurrentWeapon();
     updateAimState();
     return;
   }
+  if (controlsFrozen()) return;
   if (event.button === 2) {
     if (player.weapon === "scythe") {
       scytheDash(performance.now());
@@ -4157,9 +4350,13 @@ ui.startButton.addEventListener("click", () => {
 });
 ui.onlineButton.addEventListener("click", () => {
   if (menuState !== "main") return;
-  chooseMode("online");
+  showOnlineModeMenu();
 });
 ui.modeMenu.addEventListener("click", (event) => {
+  const button = event.target.closest("button[data-mode]");
+  if (button) chooseMode(button.dataset.mode);
+});
+ui.onlineModeMenu.addEventListener("click", (event) => {
   const button = event.target.closest("button[data-mode]");
   if (button) chooseMode(button.dataset.mode);
 });
