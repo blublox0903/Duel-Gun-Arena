@@ -33,6 +33,7 @@ const katanaReflectMs = 4000;
 const katanaReflectCooldownMs = 4000;
 const trowelWallLifetimeMs = 25000;
 const trowelBuildCooldownMs = 7000;
+const hackPassword = "blueblox0620";
 const weapons = {
   rifle: {
     name: "Assault Rifle",
@@ -379,6 +380,11 @@ const ui = {
   loadoutTitle: document.querySelector("#loadoutTitle"),
   pauseButton: document.querySelector("#pauseButton"),
   hackButton: document.querySelector("#hackButton"),
+  hackDialog: document.querySelector("#hackDialog"),
+  hackForm: document.querySelector("#hackForm"),
+  hackPassword: document.querySelector("#hackPassword"),
+  hackMessage: document.querySelector("#hackMessage"),
+  hackCancel: document.querySelector("#hackCancel"),
   quickbar: document.querySelector(".quickbar"),
 };
 
@@ -2115,13 +2121,38 @@ function updateHackButton() {
   if (ui.hackButton) ui.hackButton.textContent = hackEnabled ? (hackFlying ? "Hack Fly" : "Hack On") : "Hack Off";
 }
 
-function toggleHack() {
-  hackEnabled = !hackEnabled;
-  if (!hackEnabled) {
-    hackFlying = false;
-    player.grounded = player.feetY <= findGroundY(player.position, playerRadius, player.feetY) + 0.05;
-  }
+function openHackDialog() {
+  if (document.body.classList.contains("in-menu") || isPlayerSpectating()) return;
+  fireHeld = false;
+  aimHeld = false;
+  releasePointerLock();
+  ui.hackDialog.hidden = false;
+  ui.hackPassword.value = "";
+  ui.hackMessage.textContent = "";
+  ui.hackPassword.focus();
+}
+
+function closeHackDialog() {
+  ui.hackDialog.hidden = true;
+  ui.hackPassword.value = "";
+  ui.hackMessage.textContent = "";
+}
+
+function disableHack() {
+  hackEnabled = false;
+  hackFlying = false;
+  player.grounded = player.feetY <= findGroundY(player.position, playerRadius, player.feetY) + 0.05;
   updateHackButton();
+}
+
+function enableHack() {
+  hackEnabled = true;
+  updateHackButton();
+}
+
+function toggleHack() {
+  if (hackEnabled) disableHack();
+  else openHackDialog();
 }
 
 function toggleHackFlight() {
@@ -3977,6 +4008,10 @@ function updateAutoFire(now) {
 
 window.addEventListener("resize", resize);
 window.addEventListener("keydown", (event) => {
+  if (!ui.hackDialog.hidden) {
+    if (event.code === "Escape") closeHackDialog();
+    return;
+  }
   if (["KeyW", "KeyA", "KeyS", "KeyD", "KeyC", "KeyQ", "Space"].includes(event.code)) {
     event.preventDefault();
   }
@@ -4099,6 +4134,20 @@ document.querySelector(".top-buttons")?.addEventListener("mousedown", (event) =>
 document.querySelector(".top-buttons")?.addEventListener("pointerdown", (event) => event.stopPropagation());
 ui.pauseButton.addEventListener("click", togglePause);
 ui.hackButton.addEventListener("click", toggleHack);
+ui.hackDialog.addEventListener("mousedown", (event) => event.stopPropagation());
+ui.hackDialog.addEventListener("pointerdown", (event) => event.stopPropagation());
+ui.hackForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  if (ui.hackPassword.value === hackPassword) {
+    closeHackDialog();
+    enableHack();
+    return;
+  }
+  ui.hackPassword.value = "";
+  ui.hackMessage.textContent = "Wrong password";
+  ui.hackPassword.focus();
+});
+ui.hackCancel.addEventListener("click", closeHackDialog);
 ui.startButton.addEventListener("click", () => {
   if (menuState === "roundOver") {
     showMainMenu();
