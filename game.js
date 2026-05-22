@@ -72,6 +72,20 @@ const weapons = {
     range: 75,
     spread: 0.004,
   },
+  lasergun: {
+    name: "Laser Gun",
+    category: "primary",
+    auto: true,
+    continuousBeam: true,
+    damage: 20,
+    magSize: 50,
+    reloadMs: 5000,
+    fireMs: 18,
+    range: 52,
+    spread: 0.006,
+    tracerColor: 0x49f4ff,
+    muzzleColor: 0xa7ffff,
+  },
   handgun: {
     name: "Handgun",
     category: "secondary",
@@ -180,12 +194,12 @@ const weapons = {
 
 const loadoutSlots = ["primary", "secondary", "melee", "utility"];
 const loadoutChoices = {
-  primary: ["rifle", "trishot", "sniper"],
+  primary: ["rifle", "trishot", "sniper", "lasergun"],
   secondary: ["handgun", "revolver", "energypistol"],
   melee: ["fist", "scythe", "katana", "trowel"],
   utility: ["grenade", "smokegrenade"],
 };
-const cpuPrimaryChoices = ["rifle", "trishot", "sniper"];
+const cpuPrimaryChoices = ["rifle", "trishot", "sniper", "lasergun"];
 
 const canvas = document.querySelector("#arena");
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -359,6 +373,7 @@ const ui = {
   lockPrompt: document.querySelector("#lockPrompt"),
   overlay: document.querySelector("#overlay"),
   startButton: document.querySelector("#startButton"),
+  onlineButton: document.querySelector("#onlineButton"),
   modeMenu: document.querySelector("#modeMenu"),
   loadoutMenu: document.querySelector("#loadoutMenu"),
   loadoutTitle: document.querySelector("#loadoutTitle"),
@@ -577,6 +592,7 @@ function makeViewModel() {
     rifle: makeRifleViewModel(),
     trishot: makeTriShotViewModel(),
     sniper: makeSniperViewModel(),
+    lasergun: makeLaserGunViewModel(),
     handgun: makeHandgunViewModel(),
     revolver: makeRevolverViewModel(),
     energypistol: makeEnergyPistolViewModel(),
@@ -730,6 +746,72 @@ function makeSniperViewModel() {
   barrelExtension.position.set(0, 0.01, -1.76);
   group.add(barrelExtension);
 
+  return group;
+}
+
+function makeLaserGunViewModel() {
+  const group = new THREE.Group();
+  const bodyMat = new THREE.MeshStandardMaterial({ color: 0x102b34, roughness: 0.28, metalness: 0.62 });
+  const darkMat = new THREE.MeshStandardMaterial({ color: 0x071116, roughness: 0.36, metalness: 0.58 });
+  const glowMat = new THREE.MeshStandardMaterial({
+    color: 0x4df6ff,
+    emissive: 0x18bfe6,
+    emissiveIntensity: 1.7,
+    roughness: 0.16,
+    metalness: 0.28,
+  });
+  const glassMat = new THREE.MeshBasicMaterial({ color: 0xa7ffff, transparent: true, opacity: 0.48 });
+  const handMat = new THREE.MeshStandardMaterial({ color: 0xd6a982, roughness: 0.72 });
+
+  const receiver = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.2, 0.92), bodyMat);
+  receiver.position.set(0, 0, -0.38);
+  group.add(receiver);
+
+  const core = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.075, 0.74, 20), glowMat);
+  core.rotation.x = Math.PI / 2;
+  core.position.set(0, 0.02, -0.58);
+  group.add(core);
+
+  const shroud = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.055, 1.02, 16), darkMat);
+  shroud.rotation.x = Math.PI / 2;
+  shroud.position.set(0, 0.02, -1.15);
+  group.add(shroud);
+
+  const emitter = new THREE.Mesh(new THREE.TorusGeometry(0.075, 0.015, 8, 28), glowMat);
+  emitter.position.set(0, 0.02, -1.68);
+  group.add(emitter);
+
+  const stock = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.18, 0.38), darkMat);
+  stock.position.set(0, -0.01, 0.22);
+  group.add(stock);
+
+  const grip = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.34, 0.13), darkMat);
+  grip.position.set(0.03, -0.29, -0.13);
+  grip.rotation.x = -0.26;
+  group.add(grip);
+
+  const mag = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.42, 0.18), glowMat);
+  mag.name = "laserCell";
+  mag.position.set(0.02, -0.34, -0.42);
+  mag.rotation.x = 0.1;
+  group.add(mag);
+  group.userData.magazine = rememberViewPart(mag);
+
+  for (let i = 0; i < 5; i += 1) {
+    const vent = new THREE.Mesh(new THREE.BoxGeometry(0.025, 0.04, 0.12), glowMat);
+    vent.position.set(-0.13 + i * 0.065, 0.13, -0.72);
+    group.add(vent);
+  }
+
+  const sightBase = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.04, 0.26), darkMat);
+  sightBase.position.set(0, 0.16, -0.36);
+  group.add(sightBase);
+
+  const lens = new THREE.Mesh(new THREE.CircleGeometry(0.072, 24), glassMat);
+  lens.position.set(0, 0.24, -0.46);
+  group.add(lens);
+
+  addViewHands(group, handMat, "rifle");
   return group;
 }
 
@@ -1333,9 +1415,10 @@ function showMainMenu() {
   paused = false;
   ui.pauseButton.textContent = "Pause";
   ui.overlay.querySelector("h1").textContent = "CPU Duel Arena";
-  ui.overlay.querySelector("p").textContent = "Your avatar is ready. Press Play, then choose a mode.";
+  ui.overlay.querySelector("p").textContent = "Press Play for CPU battles, or Online to fight a real player.";
   ui.startButton.textContent = "Play";
   ui.startButton.style.display = "";
+  ui.onlineButton.style.display = "";
   ui.modeMenu.hidden = true;
   ui.loadoutMenu.hidden = true;
   ui.overlay.classList.add("show");
@@ -1359,6 +1442,7 @@ function showModeMenu() {
   ui.overlay.querySelector("h1").textContent = "Choose Gamemode";
   ui.overlay.querySelector("p").textContent = "Pick the fight setup for this match.";
   ui.startButton.style.display = "none";
+  ui.onlineButton.style.display = "none";
   ui.modeMenu.hidden = false;
   ui.loadoutMenu.hidden = true;
 }
@@ -1378,6 +1462,7 @@ function startLoadoutSelection() {
   document.body.classList.remove("choosing-mode");
   ui.overlay.classList.add("show");
   ui.startButton.style.display = "none";
+  ui.onlineButton.style.display = "none";
   ui.modeMenu.hidden = true;
   ui.loadoutMenu.hidden = false;
   renderLoadoutStep();
@@ -1450,6 +1535,7 @@ function startOnlineMatchmaking() {
   ui.overlay.querySelector("h1").textContent = "Finding Online Match";
   ui.overlay.querySelector("p").textContent = "Waiting for another player to join Online 1v1.";
   ui.startButton.style.display = "none";
+  ui.onlineButton.style.display = "none";
   ui.modeMenu.hidden = true;
   ui.loadoutMenu.hidden = true;
   connectOnline();
@@ -1485,6 +1571,7 @@ function connectOnline() {
       ui.overlay.querySelector("p").textContent = "The online match ended because someone left.";
       ui.startButton.textContent = "Back To Menu";
       ui.startButton.style.display = "";
+      ui.onlineButton.style.display = "none";
     }
   });
 }
@@ -1532,6 +1619,7 @@ function handleOnlineMessage(message) {
     ui.overlay.querySelector("p").textContent = "The online match ended because the other player left.";
     ui.startButton.textContent = "Back To Menu";
     ui.startButton.style.display = "";
+    ui.onlineButton.style.display = "none";
   }
 }
 
@@ -1759,6 +1847,7 @@ function beginRoundCountdown(seconds) {
   aimHeld = false;
   updateAimState();
   ui.startButton.style.display = "none";
+  ui.onlineButton.style.display = "none";
   ui.overlay.classList.add("show");
 
   let remaining = seconds;
@@ -1865,6 +1954,7 @@ function updateWeaponClass() {
     "weapon-rifle",
     "weapon-trishot",
     "weapon-sniper",
+    "weapon-lasergun",
     "weapon-handgun",
     "weapon-revolver",
     "weapon-energypistol",
@@ -2309,7 +2399,7 @@ function attack(attacker, defender, now, isPlayer) {
 function fireGunShot(attacker, defenders, weapon, isPlayer, defender) {
   if (!hasAmmo(attacker, attacker.weapon)) return;
   if (!weapon.infiniteAmmo) attacker.ammo[attacker.weapon] -= 1;
-  if (!isPlayer) triggerCpuAction(attacker, "shoot", Math.min(weapon.fireMs, 170));
+  if (!isPlayer) triggerCpuAction(attacker, "shoot", weapon.continuousBeam ? 110 : Math.min(weapon.fireMs, 170));
   fireBullet(attacker, defenders, weapon, isPlayer, defender);
 }
 
@@ -2368,7 +2458,8 @@ function fireBullet(attacker, defenders, weapon, isPlayer, preferredTarget) {
     if (headTarget) {
       const headPoint = getActorHeadPoint(headTarget);
       direction.copy(headPoint).sub(origin).normalize();
-      addTracer(origin, headPoint, weapon.tracerColor ?? 0x25bfff);
+      if (weapon.continuousBeam) addLaserBeam(origin, headPoint, weapon.tracerColor ?? 0x49f4ff);
+      else addTracer(origin, headPoint, weapon.tracerColor ?? 0x25bfff);
       addMuzzleFlash(origin, direction, weapon.muzzleColor ?? 0x66ecff);
       const hitDamage = weapon.headDamage ?? weapon.damage;
       damage(headTarget, hitDamage, attacker);
@@ -2382,7 +2473,8 @@ function fireBullet(attacker, defenders, weapon, isPlayer, preferredTarget) {
   const blockerHit = isPlayer && hackEnabled ? null : findBulletBlocker(origin, direction, weapon.range);
   const tracerEnd = blockerHit?.point ?? end;
   const teamColor = weapon.tracerColor ?? (attacker.team === "player" ? 0xf4d35e : 0xff5b54);
-  addTracer(origin, tracerEnd, teamColor);
+  if (weapon.continuousBeam) addLaserBeam(origin, tracerEnd, teamColor);
+  else addTracer(origin, tracerEnd, teamColor);
   addMuzzleFlash(origin, direction, weapon.muzzleColor ?? (attacker.team === "player" ? 0xffe08a : 0xff7c5b));
 
   let actorHit = null;
@@ -2481,7 +2573,7 @@ function playerAccuracyPenalty() {
 }
 
 function applyWeaponRecoil(weapon) {
-  const kick = weapon.name === "Energy Pistol" ? 0.0015 : weapon.name === "Assault Rifle" ? 0.0045 : 0.008;
+  const kick = weapon.name === "Laser Gun" ? 0.001 : weapon.name === "Energy Pistol" ? 0.0015 : weapon.name === "Assault Rifle" ? 0.0045 : 0.008;
   player.pitch = THREE.MathUtils.clamp(player.pitch + kick, -1.2, 1.2);
 }
 
@@ -2629,6 +2721,7 @@ function startSpectating(actor) {
   ui.overlay.querySelector("h1").textContent = "Watching Teammate";
   ui.overlay.querySelector("p").textContent = "You are down. Your teammate can still win the round.";
   ui.startButton.style.display = "none";
+  ui.onlineButton.style.display = "none";
   ui.modeMenu.hidden = true;
   ui.overlay.classList.add("show");
   setTimeout(() => {
@@ -2655,6 +2748,7 @@ function endRound(playerWon) {
     ui.overlay.querySelector("p").textContent = `${selectedMode} finished ${playerScore} - ${cpuScore}. First to ${MATCH_POINTS} points is complete.`;
     ui.startButton.textContent = "Back To Menu";
     ui.startButton.style.display = "";
+    ui.onlineButton.style.display = "none";
     ui.modeMenu.hidden = true;
     ui.overlay.classList.add("show");
   } else {
@@ -2678,6 +2772,7 @@ function togglePause() {
     ui.overlay.querySelector("h1").textContent = "Paused";
     ui.overlay.querySelector("p").textContent = "Press Resume to continue the round.";
     ui.startButton.style.display = "none";
+    ui.onlineButton.style.display = "none";
     ui.modeMenu.hidden = true;
     ui.overlay.classList.add("show");
   } else {
@@ -2704,6 +2799,40 @@ function addTracer(start, end, color) {
     geometry.dispose();
     material.dispose();
   }, 70);
+}
+
+function addLaserBeam(start, end, color) {
+  const midpoint = start.clone().add(end).multiplyScalar(0.5);
+  const direction = end.clone().sub(start);
+  const length = direction.length();
+  if (length < 0.05) return;
+
+  const core = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.026, 0.026, length, 10),
+    new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.95 }),
+  );
+  const glow = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.075, 0.075, length, 12),
+    new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.22 }),
+  );
+  const rotation = new THREE.Quaternion().setFromUnitVectors(
+    new THREE.Vector3(0, 1, 0),
+    direction.clone().normalize(),
+  );
+  core.position.copy(midpoint);
+  glow.position.copy(midpoint);
+  core.quaternion.copy(rotation);
+  glow.quaternion.copy(rotation);
+  scene.add(glow);
+  scene.add(core);
+  setTimeout(() => {
+    scene.remove(core);
+    scene.remove(glow);
+    core.geometry.dispose();
+    glow.geometry.dispose();
+    core.material.dispose();
+    glow.material.dispose();
+  }, 90);
 }
 
 function addMuzzleFlash(origin, direction, color) {
@@ -3518,7 +3647,7 @@ function updateAimCamera(dt) {
   updateAimState();
   const scoped = aimHeld && canAimCurrentWeapon() && !gameOver && isPointerLocked() && !isPlayerSpectating();
   const targetFov = scoped
-    ? (player.weapon === "sniper" ? sniperAimFov : aimFov)
+    ? (player.weapon === "sniper" ? sniperAimFov : player.weapon === "lasergun" ? 46 : aimFov)
     : normalFov;
   camera.fov = THREE.MathUtils.lerp(camera.fov, targetFov, 1 - Math.pow(0.0001, dt));
   camera.updateProjectionMatrix();
@@ -3572,7 +3701,10 @@ function updateViewModelParts() {
 
   const activeModel = viewModel.userData.models[player.weapon];
   const reloadProgress = currentViewActionProgress("reload");
-  if (reloadProgress !== null) animateMagazineReload(activeModel?.userData.magazine, reloadProgress);
+  if (reloadProgress !== null) {
+    if (player.reloading?.weapon === "lasergun") animateLaserReload(activeModel, reloadProgress);
+    else animateMagazineReload(activeModel?.userData.magazine, reloadProgress);
+  }
 
   const punchProgress = currentViewActionProgress("punch");
   if (punchProgress !== null) animateFistPunch(activeModel, punchProgress);
@@ -3602,6 +3734,27 @@ function animateMagazineReload(magazine, progress) {
   magazine.position.z += 0.08 * outAmount + swapTwitch;
   magazine.rotation.x += 0.22 * outAmount;
   magazine.rotation.z += 0.16 * outAmount;
+}
+
+function animateLaserReload(model, progress) {
+  if (!model) return;
+  const cell = model.userData.magazine;
+  if (!cell) return;
+  const vent = Math.sin(progress * Math.PI * 7);
+  const eject = THREE.MathUtils.smoothstep(Math.min(progress / 0.28, 1), 0, 1);
+  const charge = THREE.MathUtils.smoothstep(THREE.MathUtils.clamp((progress - 0.38) / 0.42, 0, 1), 0, 1);
+  const lock = THREE.MathUtils.smoothstep(THREE.MathUtils.clamp((progress - 0.78) / 0.18, 0, 1), 0, 1);
+
+  cell.position.y -= 0.35 * eject * (1 - charge);
+  cell.position.z += 0.18 * eject * (1 - charge);
+  cell.rotation.x += 1.2 * eject * (1 - charge);
+  cell.scale.setScalar(0.72 + charge * 0.34 + Math.max(0, vent) * 0.05 * charge * (1 - lock));
+  cell.position.y += 0.08 * lock;
+
+  model.traverse((part) => {
+    if (!part.isMesh || !part.material?.emissive) return;
+    part.material.emissiveIntensity = 0.6 + charge * 2.2 + Math.max(0, vent) * 0.5 * charge;
+  });
 }
 
 function animateFistPunch(model, progress) {
@@ -3707,8 +3860,14 @@ function getViewActionPose() {
   const rotation = new THREE.Euler();
 
   if (viewAction.type === "reload") {
-    position.set(0.18 * pulse, -0.42 * pulse, 0.16 * pulse);
-    rotation.set(0.42 * pulse, -0.22 * pulse, -0.55 * pulse + 0.08 * snap);
+    if (player.reloading?.weapon === "lasergun") {
+      const charge = THREE.MathUtils.smoothstep(THREE.MathUtils.clamp((progress - 0.34) / 0.48, 0, 1), 0, 1);
+      position.set(0.03 * snap, -0.18 * pulse - 0.08 * charge, 0.1 * pulse);
+      rotation.set(0.12 * pulse, 0.08 * snap, 0.18 * pulse - 0.06 * snap);
+    } else {
+      position.set(0.18 * pulse, -0.42 * pulse, 0.16 * pulse);
+      rotation.set(0.42 * pulse, -0.22 * pulse, -0.55 * pulse + 0.08 * snap);
+    }
   } else if (viewAction.type === "punch") {
     const jab = progress < 0.28
       ? THREE.MathUtils.smoothstep(progress / 0.28, 0, 1)
@@ -3753,6 +3912,10 @@ function getViewModelPose(weapon, aiming) {
     trishot: {
       hip: [new THREE.Vector3(0.48, -0.42, -0.92), new THREE.Euler(-0.02, -0.08, 0)],
       aim: [new THREE.Vector3(0, -0.24, -0.7), new THREE.Euler(0, 0, 0)],
+    },
+    lasergun: {
+      hip: [new THREE.Vector3(0.44, -0.4, -0.94), new THREE.Euler(-0.015, -0.075, 0)],
+      aim: [new THREE.Vector3(0, -0.245, -0.72), new THREE.Euler(0, 0, 0)],
     },
     sniper: {
       hip: [new THREE.Vector3(0.42, -0.42, -0.98), new THREE.Euler(-0.03, -0.07, 0)],
@@ -3942,6 +4105,10 @@ ui.startButton.addEventListener("click", () => {
     return;
   }
   if (menuState === "main") showModeMenu();
+});
+ui.onlineButton.addEventListener("click", () => {
+  if (menuState !== "main") return;
+  chooseMode("online");
 });
 ui.modeMenu.addEventListener("click", (event) => {
   const button = event.target.closest("button[data-mode]");

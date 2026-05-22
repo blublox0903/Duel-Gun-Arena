@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>CPU Duel Arena</title>
-    <link rel="stylesheet" href="./styles.css?v=20260521-1" />
+    <link rel="stylesheet" href="./styles.css?v=20260522-2" />
   </head>
   <body>
     <main id="game">
@@ -71,12 +71,14 @@
         <div>
           <h1>CPU Duel Arena</h1>
           <p>Fight round by round. Score a point when the enemy side goes down. First to 5 wins.</p>
-          <button id="startButton">Play</button>
+          <div id="mainActions">
+            <button id="startButton">Play</button>
+            <button id="onlineButton" type="button">Online</button>
+          </div>
           <div id="modeMenu" hidden>
             <button type="button" data-mode="1v1">1v1</button>
             <button type="button" data-mode="2v2">2v2</button>
             <button type="button" data-mode="juggernaut">Juggernaut</button>
-            <button type="button" data-mode="online">Online 1v1</button>
           </div>
           <div id="loadoutMenu" hidden>
             <span id="loadoutTitle">primary</span>
@@ -93,6 +95,6 @@
         }
       }
     </script>
-    <script type="module" src="./game.js?v=20260521-2"></script>
+    <script type="module" src="./game.js?v=20260522-2"></script>
   </body>
 </html>

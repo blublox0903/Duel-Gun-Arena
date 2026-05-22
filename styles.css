@@ -203,6 +203,7 @@ body.mode-2v2:not(.in-menu) .bar-block.cpu {
 
 .quickbar button,
 #startButton,
+#onlineButton,
 #modeMenu button {
   min-height: 44px;
   border: 1px solid rgb(255 255 255 / 0.16);
@@ -317,6 +318,7 @@ body.aiming .crosshair {
 
 body.aiming.weapon-rifle .scope-overlay,
 body.aiming.weapon-trishot .scope-overlay,
+body.aiming.weapon-lasergun .scope-overlay,
 body.aiming.weapon-sniper .scope-overlay,
 body.aiming.weapon-handgun .scope-overlay,
 body.aiming.weapon-revolver .scope-overlay {
@@ -327,14 +329,32 @@ body.aiming.weapon-rifle .scope-overlay::before,
 body.aiming.weapon-rifle .scope-overlay::after,
 body.aiming.weapon-trishot .scope-overlay::before,
 body.aiming.weapon-trishot .scope-overlay::after,
+body.aiming.weapon-lasergun .scope-overlay::before,
+body.aiming.weapon-lasergun .scope-overlay::after,
 body.aiming.weapon-sniper .scope-overlay::before,
 body.aiming.weapon-sniper .scope-overlay::after {
   background: rgb(255 57 57 / 0.72);
 }
 
 body.aiming.weapon-rifle .scope-overlay,
-body.aiming.weapon-trishot .scope-overlay {
+body.aiming.weapon-trishot .scope-overlay,
+body.aiming.weapon-lasergun .scope-overlay {
   border-radius: 12px;
+}
+
+body.aiming.weapon-lasergun .scope-overlay {
+  width: 136px;
+  border-color: rgb(77 246 255 / 0.82);
+  box-shadow:
+    0 0 0 2px rgb(77 246 255 / 0.22),
+    inset 0 0 22px rgb(77 246 255 / 0.2),
+    0 0 26px rgb(77 246 255 / 0.18);
+}
+
+body.aiming.weapon-lasergun .scope-overlay::before,
+body.aiming.weapon-lasergun .scope-overlay::after {
+  background: rgb(77 246 255 / 0.82);
+  box-shadow: 0 0 10px rgb(77 246 255 / 0.45);
 }
 
 body.aiming.weapon-sniper .scope-overlay {
@@ -510,7 +530,7 @@ body.in-menu #overlay {
 }
 
 body.in-menu #overlay > div {
-  width: min(260px, calc(100vw - 48px));
+  width: min(340px, calc(100vw - 48px));
   margin: 0;
 }
 
@@ -557,9 +577,23 @@ p {
   color: #14120a;
 }
 
+#onlineButton {
+  min-width: 140px;
+  border-color: rgb(77 246 255 / 0.58);
+  background: rgb(77 246 255 / 0.16);
+  color: #eaffff;
+}
+
+#mainActions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
 #modeMenu {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
   margin-top: 12px;
 }
