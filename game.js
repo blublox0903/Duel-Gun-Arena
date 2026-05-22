@@ -348,6 +348,7 @@ const ui = {
   cpuHp: document.querySelector("#cpuHp"),
   playerHpText: document.querySelector("#playerHpText"),
   cpuHpText: document.querySelector("#cpuHpText"),
+  enemyLabel: document.querySelector("#enemyLabel"),
   playerScore: document.querySelector("#playerScore"),
   cpuScore: document.querySelector("#cpuScore"),
   roundText: document.querySelector("#roundText"),
@@ -1539,7 +1540,7 @@ function mirrorOnlineVector(vector) {
 }
 
 function mirrorOnlineYaw(yaw) {
-  return (yaw ?? 0) + Math.PI;
+  return yaw ?? 0;
 }
 
 function applyOnlineState(state) {
@@ -1930,6 +1931,7 @@ function chooseAttackTarget(actor) {
 }
 
 function updateHud() {
+  ui.enemyLabel.textContent = selectedMode === "online" ? "Player" : "CPU";
   ui.playerHp.style.width = `${Math.max(0, (player.hp / MAX_HP) * 100)}%`;
   const enemies = livingEnemiesOf(player);
   const enemyMaxHp = Math.max(MAX_HP, activeEnemyActors().reduce((sum, actor) => sum + (actor.maxHp ?? MAX_HP), 0));
