@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CPU Duel Arena</title>
+    <link rel="stylesheet" href="./styles.css?v=20260521-1" />
+  </head>
+  <body>
+    <main id="game">
+      <canvas id="arena" tabindex="0"></canvas>
+
+      <section id="hud" aria-label="Game HUD">
+        <div class="status">
+          <div class="bar-block">
+            <span>You</span>
+            <div class="bar"><i id="playerHp"></i></div>
+            <strong id="playerHpText">150 HP</strong>
+          </div>
+          <div class="scoreboard">
+            <span>Round <b id="roundText">1</b></span>
+            <strong><b id="playerScore">0</b> - <b id="cpuScore">0</b></strong>
+            <small>First to 5</small>
+          </div>
+          <div class="bar-block cpu">
+            <span>CPU</span>
+            <div class="bar"><i id="cpuHp"></i></div>
+            <strong id="cpuHpText">150 HP</strong>
+          </div>
+        </div>
+
+        <div class="weapon-panel">
+          <div>
+            <span id="weaponName">Assault Rifle</span>
+            <strong id="ammoText">20 / 20</strong>
+          </div>
+          <div id="weaponHint">Click to shoot</div>
+        </div>
+
+        <div class="quickbar" aria-label="Weapons">
+          <button class="active" data-slot="primary" data-weapon="rifle">1 Rifle</button>
+          <button data-slot="secondary" data-weapon="handgun">2 Handgun</button>
+          <button data-slot="melee" data-weapon="fist">3 Fist</button>
+          <button data-slot="utility" data-weapon="grenade">4 Grenade</button>
+        </div>
+
+        <div class="crosshair" aria-hidden="true"></div>
+        <div id="damageNumber" aria-hidden="true"></div>
+        <div class="scope-overlay" aria-hidden="true"></div>
+        <div id="lockPrompt">Click game to lock mouse. Press Esc to unlock.</div>
+        <div class="top-buttons">
+          <button id="hackButton" type="button">Hack Off</button>
+          <button id="pauseButton" type="button">Pause</button>
+        </div>
+
+        <div class="controls">
+          <span>WASD move</span>
+          <span>Mouse aim</span>
+          <span>Click attack</span>
+          <span>Right click aim</span>
+          <span>R reload</span>
+          <span>Space jump</span>
+          <span>C slide / crouch</span>
+          <span>Hack button / H</span>
+          <span>Hack: double Space fly</span>
+          <span>Esc unlock</span>
+        </div>
+      </section>
+
+      <section id="overlay" class="show">
+        <div>
+          <h1>CPU Duel Arena</h1>
+          <p>Fight round by round. Score a point when the enemy side goes down. First to 5 wins.</p>
+          <button id="startButton">Play</button>
+          <div id="modeMenu" hidden>
+            <button type="button" data-mode="1v1">1v1</button>
+            <button type="button" data-mode="2v2">2v2</button>
+            <button type="button" data-mode="juggernaut">Juggernaut</button>
+            <button type="button" data-mode="online">Online 1v1</button>
+          </div>
+          <div id="loadoutMenu" hidden>
+            <span id="loadoutTitle">primary</span>
+            <div class="loadout-options"></div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://unpkg.com/three@0.164.1/build/three.module.js"
+        }
+      }
+    </script>
+    <script type="module" src="./game.js?v=20260521-1"></script>
+  </body>
+</html>
