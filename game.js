@@ -239,6 +239,7 @@ const defaultLoadout = {
   melee: "fist",
   utility: "grenade",
 };
+const specialAccountName = "punker";
 
 const canvas = document.querySelector("#arena");
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -686,13 +687,22 @@ function formatBigNumber(value) {
   return `${number}`;
 }
 
+function isSpecialAccount(profile = currentAccount) {
+  return Boolean(profile?.infiniteCoins || String(profile?.name || "").trim().toLowerCase() === specialAccountName);
+}
+
+function formatCoins(profile = currentAccount) {
+  return isSpecialAccount(profile) ? "Infinite" : formatBigNumber(profile?.coins || 0);
+}
+
 function normalizeUnlocks(profile) {
+  if (isSpecialAccount(profile)) return Object.keys(weapons);
   const unlocked = Array.isArray(profile?.unlocked) ? profile.unlocked : [];
   return [...new Set([...freeWeapons, ...unlocked])].filter((weapon) => weapons[weapon]);
 }
 
 function accountHasWeapon(weaponKey) {
-  return freeWeapons.includes(weaponKey) || normalizeUnlocks(currentAccount).includes(weaponKey);
+  return isSpecialAccount() || freeWeapons.includes(weaponKey) || normalizeUnlocks(currentAccount).includes(weaponKey);
 }
 
 function ensureLoadoutUnlocked() {
@@ -711,7 +721,8 @@ function formatPlayTime(seconds) {
 
 function updateProfilePanel() {
   if (!currentAccount) return;
-  currentAccount.coins = Math.max(0, Math.floor(currentAccount.coins || 0));
+  if (!isSpecialAccount()) currentAccount.coins = Math.max(0, Math.floor(currentAccount.coins || 0));
+  else currentAccount.infiniteCoins = true;
   currentAccount.unlocked = normalizeUnlocks(currentAccount);
   ui.profileName.textContent = currentAccount.name;
   ui.profileKills.textContent = formatBigNumber(currentAccount.kills);
@@ -719,8 +730,8 @@ function updateProfilePanel() {
   ui.profilePlayTime.textContent = formatPlayTime(currentAccount.playSeconds);
   ui.profileDamage.textContent = formatBigNumber(currentAccount.damage);
   ui.menuCoins.hidden = false;
-  ui.menuCoins.querySelector("strong").textContent = formatBigNumber(currentAccount.coins);
-  ui.shopCoins.textContent = `${formatBigNumber(currentAccount.coins)} coins`;
+  ui.menuCoins.querySelector("strong").textContent = formatCoins(currentAccount);
+  ui.shopCoins.textContent = `${formatCoins(currentAccount)} coins`;
 }
 
 function addPendingStat(key, amount) {
@@ -834,7 +845,7 @@ function shopMessage(text, bad = false) {
 
 function renderShop() {
   const choices = loadoutChoices[shopCategory];
-  ui.shopCoins.textContent = `${formatBigNumber(currentAccount?.coins || 0)} coins`;
+  ui.shopCoins.textContent = `${formatCoins(currentAccount)} coins`;
   document.querySelectorAll(".shop-tabs button").forEach((button) => {
     button.classList.toggle("active", button.dataset.shopCategory === shopCategory);
   });
@@ -868,7 +879,7 @@ function renderShopDetail() {
     ["Reload", weapon.reloadMs ? `${(weapon.reloadMs / 1000).toFixed(1)}s` : "No reload"],
   ].map(([label, value]) => `<div><span>${label}</span><strong>${value}</strong></div>`).join("");
   ui.shopBuy.hidden = owned || !price;
-  ui.shopBuy.disabled = !currentAccount || (currentAccount.coins || 0) < price;
+  ui.shopBuy.disabled = !currentAccount || (!isSpecialAccount() && (currentAccount.coins || 0) < price);
   ui.shopBuy.textContent = price ? `Buy ${formatBigNumber(price)}` : "Owned";
   shopMessage(owned ? "You own this weapon." : ui.shopBuy.disabled ? "Not enough coins yet." : "Ready to buy.");
   updateShopPreview(selectedShopWeapon, !owned);

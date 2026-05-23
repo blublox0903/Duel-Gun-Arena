@@ -23,6 +23,8 @@ waiting_queues = {"online": [], "online2v2": []}
 rooms = {}
 MODE_SIZE = {"online": 2, "online2v2": 4}
 MODE_ROLES = {"online": ["a", "b"], "online2v2": ["a1", "a2", "b1", "b2"]}
+SPECIAL_ACCOUNT_NAME = "punker"
+SPECIAL_COINS = 999999999
 FREE_WEAPONS = ["rifle", "handgun", "fist", "grenade"]
 WEAPON_PRICES = {
     "trishot": 1000,
@@ -185,7 +187,8 @@ def make_token(name, stored_hash):
 
 def public_profile(name, account):
     stats = account.setdefault("stats", {})
-    unlocked = account.setdefault("unlocked", FREE_WEAPONS.copy())
+    is_special = str(account.get("name", name)).lower() == SPECIAL_ACCOUNT_NAME
+    unlocked = list(WEAPON_PRICES.keys()) + FREE_WEAPONS if is_special else account.setdefault("unlocked", FREE_WEAPONS.copy())
     for weapon in FREE_WEAPONS:
         if weapon not in unlocked:
             unlocked.append(weapon)
@@ -195,7 +198,8 @@ def public_profile(name, account):
         "playerKills": int(stats.get("playerKills", 0)),
         "damage": int(stats.get("damage", 0)),
         "playSeconds": int(stats.get("playSeconds", 0)),
-        "coins": int(stats.get("coins", 0)),
+        "coins": SPECIAL_COINS if is_special else int(stats.get("coins", 0)),
+        "infiniteCoins": is_special,
         "unlocked": unlocked,
     }
 
@@ -309,6 +313,9 @@ async def handle_api(writer, method, raw_path, body):
             return
         profile = public_profile(key, account)
         if weapon in profile["unlocked"]:
+            await send_json(writer, "200 OK", {"ok": True, "profile": profile})
+            return
+        if profile.get("infiniteCoins"):
             await send_json(writer, "200 OK", {"ok": True, "profile": profile})
             return
         price = WEAPON_PRICES[weapon]
