@@ -11,6 +11,7 @@ from urllib.parse import unquote, urlparse
 ROOT = Path(__file__).resolve().parent
 GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 PORT = int(os.environ.get("PORT", "4173"))
+ACCOUNTS_PATH = ROOT / "accounts.json"
 
 waiting_queues = {"online": [], "online2v2": []}
 rooms = {}
@@ -58,7 +59,9 @@ async def read_http_request(reader):
             continue
         key, value = line.split(":", 1)
         headers[key.lower()] = value.strip()
-    return method, path, headers
+    content_length = int(headers.get("content-length", "0") or "0")
+    body = await reader.readexactly(content_length) if content_length else b""
+    return method, path, headers, body
 
 
 async def send_http(writer, status, body, content_type="text/plain; charset=utf-8"):
@@ -75,6 +78,153 @@ async def send_http(writer, status, body, content_type="text/plain; charset=utf-
     await writer.drain()
     writer.close()
     await writer.wait_closed()
+
+
+async def send_json(writer, status, payload):
+    await send_http(writer, status, json.dumps(payload), "application/json; charset=utf-8")
+
+
+def load_accounts():
+    if not ACCOUNTS_PATH.exists():
+        return {}
+    try:
+        return json.loads(ACCOUNTS_PATH.read_text("utf-8"))
+    except Exception:
+        return {}
+
+
+def save_accounts(accounts):
+    ACCOUNTS_PATH.write_text(json.dumps(accounts, indent=2, sort_keys=True), "utf-8")
+
+
+def normalize_name(name):
+    name = " ".join(str(name or "").strip().split())
+    if not 3 <= len(name) <= 18:
+        return None
+    allowed = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 _-")
+    if any(char not in allowed for char in name):
+        return None
+    return name
+
+
+def password_hash(password):
+    return hashlib.sha256(str(password or "").encode("utf-8")).hexdigest()
+
+
+def make_token(name, stored_hash):
+    raw = f"duel-gun-arena:{name.lower()}:{stored_hash}"
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def public_profile(name, account):
+    stats = account.setdefault("stats", {})
+    return {
+        "name": account.get("name", name),
+        "kills": int(stats.get("kills", 0)),
+        "playerKills": int(stats.get("playerKills", 0)),
+        "damage": int(stats.get("damage", 0)),
+        "playSeconds": int(stats.get("playSeconds", 0)),
+    }
+
+
+def auth_account(accounts, payload):
+    name = normalize_name(payload.get("name"))
+    if not name:
+        return None, None
+    key = name.lower()
+    account = accounts.get(key)
+    if not account:
+        return None, None
+    if payload.get("token") != make_token(account["name"], account["passwordHash"]):
+        return None, None
+    return key, account
+
+
+async def handle_api(writer, method, raw_path, body):
+    if method != "POST":
+        await send_json(writer, "405 Method Not Allowed", {"ok": False, "message": "POST only"})
+        return
+    try:
+        payload = json.loads(body.decode("utf-8") or "{}")
+    except Exception:
+        await send_json(writer, "400 Bad Request", {"ok": False, "message": "Bad JSON"})
+        return
+
+    path = urlparse(raw_path).path
+    accounts = load_accounts()
+    if path == "/api/create-account":
+        name = normalize_name(payload.get("name"))
+        password = str(payload.get("password") or "")
+        if not name:
+            await send_json(writer, "400 Bad Request", {"ok": False, "message": "Use 3-18 letters or numbers"})
+            return
+        if len(password) < 3:
+            await send_json(writer, "400 Bad Request", {"ok": False, "message": "Password needs 3+ letters"})
+            return
+        key = name.lower()
+        if key in accounts:
+            await send_json(writer, "409 Conflict", {"ok": False, "message": "name existed, try another"})
+            return
+        stored_hash = password_hash(password)
+        accounts[key] = {
+            "name": name,
+            "passwordHash": stored_hash,
+            "stats": {"kills": 0, "playerKills": 0, "damage": 0, "playSeconds": 0},
+        }
+        save_accounts(accounts)
+        await send_json(writer, "200 OK", {
+            "ok": True,
+            "token": make_token(name, stored_hash),
+            "profile": public_profile(key, accounts[key]),
+        })
+        return
+
+    if path == "/api/check-name":
+        name = normalize_name(payload.get("name"))
+        if not name:
+            await send_json(writer, "400 Bad Request", {"ok": False, "message": "Use 3-18 letters or numbers"})
+            return
+        if name.lower() in accounts:
+            await send_json(writer, "409 Conflict", {"ok": False, "message": "name existed, try another"})
+            return
+        await send_json(writer, "200 OK", {"ok": True, "name": name})
+        return
+
+    if path == "/api/sign-in":
+        name = normalize_name(payload.get("name"))
+        key = name.lower() if name else ""
+        account = accounts.get(key)
+        if not account or account["passwordHash"] != password_hash(payload.get("password")):
+            await send_json(writer, "403 Forbidden", {"ok": False, "message": "Wrong name or password"})
+            return
+        await send_json(writer, "200 OK", {
+            "ok": True,
+            "token": make_token(account["name"], account["passwordHash"]),
+            "profile": public_profile(key, account),
+        })
+        return
+
+    if path == "/api/profile":
+        key, account = auth_account(accounts, payload)
+        if not account:
+            await send_json(writer, "403 Forbidden", {"ok": False, "message": "Sign in again"})
+            return
+        await send_json(writer, "200 OK", {"ok": True, "profile": public_profile(key, account)})
+        return
+
+    if path == "/api/stats":
+        key, account = auth_account(accounts, payload)
+        if not account:
+            await send_json(writer, "403 Forbidden", {"ok": False, "message": "Sign in again"})
+            return
+        stats = account.setdefault("stats", {})
+        for stat_key in ["kills", "playerKills", "damage", "playSeconds"]:
+            stats[stat_key] = max(0, int(stats.get(stat_key, 0)) + int(payload.get(stat_key, 0) or 0))
+        save_accounts(accounts)
+        await send_json(writer, "200 OK", {"ok": True, "profile": public_profile(key, account)})
+        return
+
+    await send_json(writer, "404 Not Found", {"ok": False, "message": "Unknown API"})
 
 
 async def serve_file(writer, raw_path):
@@ -198,9 +348,11 @@ async def handle_ws(reader, writer, headers):
 
 async def handle_connection(reader, writer):
     try:
-        method, path, headers = await read_http_request(reader)
+        method, path, headers, body = await read_http_request(reader)
         if headers.get("upgrade", "").lower() == "websocket" and urlparse(path).path == "/ws":
             await handle_ws(reader, writer, headers)
+        elif urlparse(path).path.startswith("/api/"):
+            await handle_api(writer, method, path, body)
         elif method == "GET":
             await serve_file(writer, path)
         else:

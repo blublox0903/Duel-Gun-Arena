@@ -365,6 +365,18 @@ let onlineRole = null;
 let onlineLastSend = 0;
 const onlineActorsByRole = new Map();
 const onlineRolesByActor = new Map();
+const accountStorageKey = "duelGunArenaAccount";
+let currentAccount = null;
+let pendingCreateName = "";
+let profileWasPlaying = false;
+let lastPlaytimeSync = performance.now();
+let lastStatsFlush = 0;
+let pendingStats = {
+  kills: 0,
+  playerKills: 0,
+  damage: 0,
+  playSeconds: 0,
+};
 
 const ui = {
   playerHp: document.querySelector("#playerHp"),
@@ -395,6 +407,30 @@ const ui = {
   hackPassword: document.querySelector("#hackPassword"),
   hackMessage: document.querySelector("#hackMessage"),
   hackCancel: document.querySelector("#hackCancel"),
+  profileButton: document.querySelector("#profileButton"),
+  accountDialog: document.querySelector("#accountDialog"),
+  accountChoice: document.querySelector("#accountChoice"),
+  accountMessage: document.querySelector("#accountMessage"),
+  createAccountButton: document.querySelector("#createAccountButton"),
+  signInButton: document.querySelector("#signInButton"),
+  createNameForm: document.querySelector("#createNameForm"),
+  createName: document.querySelector("#createName"),
+  createNameMessage: document.querySelector("#createNameMessage"),
+  createPasswordForm: document.querySelector("#createPasswordForm"),
+  createPassword: document.querySelector("#createPassword"),
+  createPasswordMessage: document.querySelector("#createPasswordMessage"),
+  signInForm: document.querySelector("#signInForm"),
+  signInName: document.querySelector("#signInName"),
+  signInPassword: document.querySelector("#signInPassword"),
+  signInMessage: document.querySelector("#signInMessage"),
+  profileMenu: document.querySelector("#profileMenu"),
+  profileName: document.querySelector("#profileName"),
+  profileKills: document.querySelector("#profileKills"),
+  profilePlayerKills: document.querySelector("#profilePlayerKills"),
+  profilePlayTime: document.querySelector("#profilePlayTime"),
+  profileDamage: document.querySelector("#profileDamage"),
+  profileClose: document.querySelector("#profileClose"),
+  signOutButton: document.querySelector("#signOutButton"),
   quickbar: document.querySelector(".quickbar"),
 };
 
@@ -442,6 +478,155 @@ function showRoundBanner(text) {
 function hideRoundBanner() {
   ui.roundBanner.textContent = "";
   ui.roundBanner.classList.remove("show");
+}
+
+function setAccountPanel(panel) {
+  [ui.accountChoice, ui.createNameForm, ui.createPasswordForm, ui.signInForm, ui.profileMenu].forEach((item) => {
+    item.hidden = item.id !== panel;
+  });
+}
+
+function showAccountGate(message = "Create an account or sign in to play.") {
+  releasePointerLock();
+  document.body.classList.add("account-open");
+  ui.accountDialog.hidden = false;
+  ui.accountMessage.textContent = message;
+  setAccountPanel("accountChoice");
+  gameOver = true;
+}
+
+function hideAccountDialog() {
+  ui.accountDialog.hidden = true;
+  document.body.classList.remove("account-open");
+}
+
+async function apiPost(path, payload) {
+  const response = await fetch(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const data = await response.json().catch(() => ({ ok: false, message: "Server error" }));
+  if (!response.ok || !data.ok) throw new Error(data.message || "Server error");
+  return data;
+}
+
+function saveAccountSession() {
+  if (!currentAccount) return;
+  localStorage.setItem(accountStorageKey, JSON.stringify({
+    name: currentAccount.name,
+    token: currentAccount.token,
+  }));
+}
+
+function setCurrentAccount(profile, token) {
+  currentAccount = { ...profile, token };
+  saveAccountSession();
+  updateProfilePanel();
+}
+
+async function initAccount() {
+  const stored = JSON.parse(localStorage.getItem(accountStorageKey) || "null");
+  if (!stored?.name || !stored?.token) {
+    showAccountGate();
+    return;
+  }
+  try {
+    const data = await apiPost("/api/profile", stored);
+    setCurrentAccount(data.profile, stored.token);
+    hideAccountDialog();
+    showMainMenu();
+  } catch {
+    localStorage.removeItem(accountStorageKey);
+    showAccountGate("Sign in again to play.");
+  }
+}
+
+function formatBigNumber(value) {
+  const number = Math.max(0, Math.floor(value || 0));
+  if (number >= 1000000) return `${(number / 1000000).toFixed(number >= 10000000 ? 0 : 1)}M`;
+  if (number >= 1000) return `${(number / 1000).toFixed(number >= 10000 ? 0 : 1)}K`;
+  return `${number}`;
+}
+
+function formatPlayTime(seconds) {
+  const totalMinutes = Math.floor(Math.max(0, seconds || 0) / 60);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return `${hours}h ${minutes}m`;
+}
+
+function updateProfilePanel() {
+  if (!currentAccount) return;
+  ui.profileName.textContent = currentAccount.name;
+  ui.profileKills.textContent = formatBigNumber(currentAccount.kills);
+  ui.profilePlayerKills.textContent = formatBigNumber(currentAccount.playerKills);
+  ui.profilePlayTime.textContent = formatPlayTime(currentAccount.playSeconds);
+  ui.profileDamage.textContent = formatBigNumber(currentAccount.damage);
+}
+
+function addPendingStat(key, amount) {
+  if (!currentAccount || !amount) return;
+  pendingStats[key] += Math.max(0, Math.floor(amount));
+  currentAccount[key] = Math.max(0, Math.floor((currentAccount[key] || 0) + amount));
+}
+
+function trackDamageStats(target, amount, hpBefore, wasKilled) {
+  if (!currentAccount || target === player || target?.team !== "enemy") return;
+  const dealt = Math.min(Math.max(0, amount), Math.max(0, hpBefore));
+  if (dealt > 0) addPendingStat("damage", dealt);
+  if (wasKilled) {
+    addPendingStat("kills", 1);
+    if (isOnlineMode()) addPendingStat("playerKills", 1);
+  }
+}
+
+async function syncStats(force = false) {
+  if (!currentAccount?.token) return;
+  const now = performance.now();
+  const hasStats = pendingStats.kills || pendingStats.playerKills || pendingStats.damage || pendingStats.playSeconds;
+  if (!hasStats || (!force && now - lastStatsFlush < 4500)) return;
+  const delta = { ...pendingStats };
+  pendingStats = { kills: 0, playerKills: 0, damage: 0, playSeconds: 0 };
+  lastStatsFlush = now;
+  try {
+    const data = await apiPost("/api/stats", {
+      name: currentAccount.name,
+      token: currentAccount.token,
+      ...delta,
+    });
+    currentAccount = { ...data.profile, token: currentAccount.token };
+    updateProfilePanel();
+  } catch {
+    pendingStats.kills += delta.kills;
+    pendingStats.playerKills += delta.playerKills;
+    pendingStats.damage += delta.damage;
+    pendingStats.playSeconds += delta.playSeconds;
+  }
+}
+
+async function openProfileMenu() {
+  if (!currentAccount) {
+    showAccountGate();
+    return;
+  }
+  profileWasPlaying = !gameOver && !paused;
+  paused = profileWasPlaying || paused;
+  releasePointerLock();
+  await syncStats(true);
+  updateProfilePanel();
+  document.body.classList.add("account-open");
+  ui.accountDialog.hidden = false;
+  setAccountPanel("profileMenu");
+}
+
+function closeProfileMenu() {
+  hideAccountDialog();
+  if (profileWasPlaying && !gameOver) {
+    paused = false;
+    requestPointerLock();
+  }
+  profileWasPlaying = false;
 }
 
 function buildWorld() {
@@ -1434,6 +1619,10 @@ function makeFighter(bodyColor, accentColor) {
 }
 
 function showMainMenu() {
+  if (!currentAccount) {
+    showAccountGate();
+    return;
+  }
   clearRoundCountdown();
   releasePointerLock();
   if (isOnlineMode()) closeOnline();
@@ -2860,7 +3049,9 @@ function damage(target, amount, attacker = null) {
     damage(attacker, amount, null);
     return;
   }
+  const hpBefore = target.hp;
   target.hp = Math.max(0, target.hp - amount);
+  if (attacker === player) trackDamageStats(target, amount, hpBefore, target.hp <= 0);
   if (isOnlineMode() && attacker === player && target.team === "enemy") {
     sendOnline({ type: "damage", role: onlineRole, targetRole: onlineRolesByActor.get(target), amount });
   }
@@ -3766,6 +3957,15 @@ function animate() {
   animateJumpPads(now);
   finishReloads(now);
   if (!gameOver && !paused) {
+    if (!preRoundFreeze && !roundEnding && !changingLoadoutMidRound && menuState === "playing") {
+      const wholeSeconds = Math.floor((now - lastPlaytimeSync) / 1000);
+      if (wholeSeconds > 0) {
+        addPendingStat("playSeconds", wholeSeconds);
+        lastPlaytimeSync += wholeSeconds * 1000;
+      }
+    } else {
+      lastPlaytimeSync = now;
+    }
     if (isPlayerSpectating()) {
       updateSpectatorCamera(dt);
     } else {
@@ -3777,8 +3977,10 @@ function animate() {
     else if (!preRoundFreeze) cpuActors.forEach((actor) => updateCpu(now, dt, actor));
     if (!preRoundFreeze) updateProjectiles(dt);
   } else if (!matchStarted || menuState === "main" || menuState === "mode") {
+    lastPlaytimeSync = now;
     updateMenuPreview();
   }
+  syncStats(false);
   updateSniperAimLights();
   updateHud();
   renderer.render(scene, camera);
@@ -4192,6 +4394,10 @@ function updateAutoFire(now) {
 
 window.addEventListener("resize", resize);
 window.addEventListener("keydown", (event) => {
+  if (!ui.accountDialog.hidden) {
+    if (event.code === "Escape" && !ui.profileMenu.hidden) closeProfileMenu();
+    return;
+  }
   if (!ui.hackDialog.hidden) {
     if (event.code === "Escape") closeHackDialog();
     return;
@@ -4341,6 +4547,81 @@ ui.hackForm.addEventListener("submit", (event) => {
   ui.hackPassword.focus();
 });
 ui.hackCancel.addEventListener("click", closeHackDialog);
+ui.accountDialog.addEventListener("mousedown", (event) => event.stopPropagation());
+ui.accountDialog.addEventListener("pointerdown", (event) => event.stopPropagation());
+ui.profileButton.addEventListener("click", openProfileMenu);
+ui.createAccountButton.addEventListener("click", () => {
+  ui.createName.value = "";
+  ui.createNameMessage.textContent = "";
+  setAccountPanel("createNameForm");
+  ui.createName.focus();
+});
+ui.signInButton.addEventListener("click", () => {
+  ui.signInName.value = "";
+  ui.signInPassword.value = "";
+  ui.signInMessage.textContent = "";
+  setAccountPanel("signInForm");
+  ui.signInName.focus();
+});
+document.querySelectorAll(".accountBack").forEach((button) => {
+  button.addEventListener("click", () => {
+    pendingCreateName = "";
+    setAccountPanel("accountChoice");
+  });
+});
+ui.createNameForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  ui.createNameMessage.textContent = "";
+  try {
+    const data = await apiPost("/api/check-name", { name: ui.createName.value });
+    pendingCreateName = data.name;
+    ui.createPassword.value = "";
+    ui.createPasswordMessage.textContent = "";
+    setAccountPanel("createPasswordForm");
+    ui.createPassword.focus();
+  } catch (error) {
+    ui.createNameMessage.textContent = error.message;
+  }
+});
+ui.createPasswordForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  ui.createPasswordMessage.textContent = "";
+  try {
+    const data = await apiPost("/api/create-account", {
+      name: pendingCreateName,
+      password: ui.createPassword.value,
+    });
+    setCurrentAccount(data.profile, data.token);
+    hideAccountDialog();
+    showMainMenu();
+  } catch (error) {
+    ui.createPasswordMessage.textContent = error.message;
+  }
+});
+ui.signInForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  ui.signInMessage.textContent = "";
+  try {
+    const data = await apiPost("/api/sign-in", {
+      name: ui.signInName.value,
+      password: ui.signInPassword.value,
+    });
+    setCurrentAccount(data.profile, data.token);
+    hideAccountDialog();
+    showMainMenu();
+  } catch (error) {
+    ui.signInMessage.textContent = error.message;
+  }
+});
+ui.profileClose.addEventListener("click", closeProfileMenu);
+ui.signOutButton.addEventListener("click", () => {
+  syncStats(true);
+  localStorage.removeItem(accountStorageKey);
+  currentAccount = null;
+  pendingStats = { kills: 0, playerKills: 0, damage: 0, playSeconds: 0 };
+  profileWasPlaying = false;
+  showAccountGate("Signed out.");
+});
 ui.startButton.addEventListener("click", () => {
   if (menuState === "roundOver") {
     showMainMenu();
@@ -4371,5 +4652,5 @@ updateHud();
   updateScoreHud();
   updateWeaponClass();
   updateModeClass();
-  showMainMenu();
+  initAccount();
   animate();

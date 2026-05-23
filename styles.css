@@ -66,6 +66,10 @@ body.spectating .controls {
   display: none;
 }
 
+body.account-open #hud {
+  display: none;
+}
+
 body.mode-2v2:not(.in-menu) .bar-block.cpu,
 body.mode-online2v2:not(.in-menu) .bar-block.cpu {
   display: none;
@@ -451,7 +455,8 @@ body.aiming.weapon-revolver .scope-overlay {
 }
 
 #pauseButton,
-#hackButton {
+#hackButton,
+#profileButton {
   min-width: 86px;
   min-height: 38px;
   border: 1px solid rgb(255 255 255 / 0.16);
@@ -484,6 +489,14 @@ body.hack-enabled #hackButton {
 body.hack-flying #hackButton {
   border-color: rgb(244 211 94 / 0.9);
   background: rgb(244 211 94 / 0.24);
+}
+
+#profileButton {
+  position: absolute;
+  top: 112px;
+  left: 18px;
+  z-index: 60;
+  pointer-events: auto;
 }
 
 #lockPrompt {
@@ -541,7 +554,8 @@ body.hack-flying #hackButton {
   display: grid;
 }
 
-#hackDialog {
+#hackDialog,
+#accountDialog {
   position: fixed;
   inset: 0;
   z-index: 95;
@@ -552,11 +566,13 @@ body.hack-flying #hackButton {
   pointer-events: auto;
 }
 
-#hackDialog[hidden] {
+#hackDialog[hidden],
+#accountDialog[hidden] {
   display: none;
 }
 
-#hackForm {
+#hackForm,
+.account-card {
   width: min(340px, 100%);
   padding: 18px;
   border: 1px solid rgb(77 246 255 / 0.42);
@@ -565,7 +581,8 @@ body.hack-flying #hackButton {
   box-shadow: 0 14px 42px rgb(0 0 0 / 0.42);
 }
 
-#hackForm label {
+#hackForm label,
+.account-card label {
   display: block;
   color: #eaffff;
   font-size: 13px;
@@ -574,7 +591,8 @@ body.hack-flying #hackButton {
   text-transform: uppercase;
 }
 
-#hackPassword {
+#hackPassword,
+.account-card input {
   width: 100%;
   height: 42px;
   margin-top: 10px;
@@ -593,20 +611,33 @@ body.hack-flying #hackButton {
   box-shadow: 0 0 0 3px rgb(77 246 255 / 0.16);
 }
 
-#hackMessage {
+.account-card input:focus {
+  border-color: rgb(77 246 255 / 0.82);
+  box-shadow: 0 0 0 3px rgb(77 246 255 / 0.16);
+}
+
+#hackMessage,
+.account-card p {
   min-height: 20px;
   margin: 9px 0 12px;
   color: #ffb0b0;
   font-size: 13px;
 }
 
-#hackForm > div {
+#accountMessage {
+  color: #b8c5d2;
+}
+
+#hackForm > div,
+.account-actions {
   display: flex;
   justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
-#hackForm button {
+#hackForm button,
+.account-card button {
   min-height: 38px;
   padding: 0 14px;
   border: 1px solid rgb(255 255 255 / 0.16);
@@ -619,9 +650,43 @@ body.hack-flying #hackButton {
   cursor: pointer;
 }
 
-#hackForm button[type="submit"] {
+#hackForm button[type="submit"],
+#createAccountButton,
+#profileClose {
   border-color: rgb(77 246 255 / 0.58);
   background: rgb(77 246 255 / 0.18);
+}
+
+.account-card h2 {
+  margin: 0 0 12px;
+  color: #f8fbff;
+  font-size: 28px;
+  line-height: 1;
+}
+
+.account-card form[hidden],
+.account-card div[hidden] {
+  display: none;
+}
+
+.profile-grid {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px 16px;
+  margin: 14px 0 16px;
+}
+
+.profile-grid span {
+  color: #b8c5d2;
+  font-size: 13px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.profile-grid strong {
+  color: #f4d35e;
+  font-size: 16px;
+  text-align: right;
 }
 
 #overlay > div {
@@ -806,8 +871,14 @@ p {
     top: 128px;
   }
 
+  #profileButton {
+    top: 128px;
+    left: 10px;
+  }
+
   #pauseButton,
-  #hackButton {
+  #hackButton,
+  #profileButton {
     min-width: 74px;
     padding: 0 8px;
   }

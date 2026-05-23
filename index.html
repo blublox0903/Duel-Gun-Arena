@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>CPU Duel Arena</title>
-    <link rel="stylesheet" href="./styles.css?v=20260522-6" />
+    <link rel="stylesheet" href="./styles.css?v=20260522-7" />
   </head>
   <body>
     <main id="game">
@@ -49,6 +49,7 @@
         <div id="roundBanner" aria-live="polite"></div>
         <div class="scope-overlay" aria-hidden="true"></div>
         <div id="lockPrompt">Click game to lock mouse. Press Esc to unlock.</div>
+        <button id="profileButton" type="button">Profile</button>
         <div class="top-buttons">
           <button id="hackButton" type="button">Hack Off</button>
           <button id="pauseButton" type="button">Pause</button>
@@ -103,6 +104,68 @@
           </div>
         </form>
       </section>
+
+      <section id="accountDialog" aria-label="Account menu">
+        <div class="account-card">
+          <div id="accountChoice">
+            <h2>Duel Gun Arena</h2>
+            <p id="accountMessage">Create an account or sign in to play.</p>
+            <div class="account-actions">
+              <button id="createAccountButton" type="button">Create Account</button>
+              <button id="signInButton" type="button">Sign In</button>
+            </div>
+          </div>
+
+          <form id="createNameForm" hidden>
+            <h2>Create Account</h2>
+            <label for="createName">Profile Name</label>
+            <input id="createName" autocomplete="username" maxlength="18" />
+            <p id="createNameMessage"></p>
+            <div class="account-actions">
+              <button type="submit">Next</button>
+              <button class="accountBack" type="button">Back</button>
+            </div>
+          </form>
+
+          <form id="createPasswordForm" hidden>
+            <h2>Set Password</h2>
+            <label for="createPassword">Password</label>
+            <input id="createPassword" type="password" autocomplete="new-password" />
+            <p id="createPasswordMessage"></p>
+            <div class="account-actions">
+              <button type="submit">Create</button>
+              <button class="accountBack" type="button">Back</button>
+            </div>
+          </form>
+
+          <form id="signInForm" hidden>
+            <h2>Sign In</h2>
+            <label for="signInName">Profile Name</label>
+            <input id="signInName" autocomplete="username" maxlength="18" />
+            <label for="signInPassword">Password</label>
+            <input id="signInPassword" type="password" autocomplete="current-password" />
+            <p id="signInMessage"></p>
+            <div class="account-actions">
+              <button type="submit">Sign In</button>
+              <button class="accountBack" type="button">Back</button>
+            </div>
+          </form>
+
+          <div id="profileMenu" hidden>
+            <h2 id="profileName">Profile</h2>
+            <div class="profile-grid">
+              <span>Kills</span><strong id="profileKills">0</strong>
+              <span>Real Player Kills</span><strong id="profilePlayerKills">0</strong>
+              <span>Play Time</span><strong id="profilePlayTime">0h 0m</strong>
+              <span>Total Damage</span><strong id="profileDamage">0</strong>
+            </div>
+            <div class="account-actions">
+              <button id="profileClose" type="button">Close</button>
+              <button id="signOutButton" type="button">Sign Out</button>
+            </div>
+          </div>
+        </div>
+      </section>
     </main>
 
     <script type="importmap">
@@ -112,6 +175,6 @@
         }
       }
     </script>
-    <script type="module" src="./game.js?v=20260522-6"></script>
+    <script type="module" src="./game.js?v=20260522-7"></script>
   </body>
 </html>
