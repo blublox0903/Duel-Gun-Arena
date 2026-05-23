@@ -7,11 +7,17 @@ import os
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
+try:
+    import psycopg
+except Exception:
+    psycopg = None
 
 ROOT = Path(__file__).resolve().parent
 GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 PORT = int(os.environ.get("PORT", "4173"))
 ACCOUNTS_PATH = ROOT / "accounts.json"
+DATABASE_URL = os.environ.get("DATABASE_URL")
+db_ready = False
 
 waiting_queues = {"online": [], "online2v2": []}
 rooms = {}
@@ -84,7 +90,39 @@ async def send_json(writer, status, payload):
     await send_http(writer, status, json.dumps(payload), "application/json; charset=utf-8")
 
 
+def db_available():
+    return bool(DATABASE_URL and psycopg)
+
+
+def db_connect():
+    return psycopg.connect(DATABASE_URL, autocommit=True)
+
+
+def init_db():
+    global db_ready
+    if db_ready or not db_available():
+        return
+    with db_connect() as conn:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS accounts (
+                key TEXT PRIMARY KEY,
+                data JSONB NOT NULL
+            )
+            """
+        )
+    db_ready = True
+
+
 def load_accounts():
+    if db_available():
+        try:
+            init_db()
+            with db_connect() as conn:
+                rows = conn.execute("SELECT key, data::text FROM accounts").fetchall()
+            return {key: json.loads(data) for key, data in rows}
+        except Exception as error:
+            print(f"Database account load failed, using file fallback: {error}")
     if not ACCOUNTS_PATH.exists():
         return {}
     try:
@@ -94,6 +132,22 @@ def load_accounts():
 
 
 def save_accounts(accounts):
+    if db_available():
+        try:
+            init_db()
+            with db_connect() as conn:
+                for key, account in accounts.items():
+                    conn.execute(
+                        """
+                        INSERT INTO accounts (key, data)
+                        VALUES (%s, %s::jsonb)
+                        ON CONFLICT (key) DO UPDATE SET data = EXCLUDED.data
+                        """,
+                        (key, json.dumps(account)),
+                    )
+            return
+        except Exception as error:
+            print(f"Database account save failed, using file fallback: {error}")
     ACCOUNTS_PATH.write_text(json.dumps(accounts, indent=2, sort_keys=True), "utf-8")
 
 

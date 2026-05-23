@@ -4685,12 +4685,7 @@ ui.createPasswordForm.addEventListener("submit", async (event) => {
       ui.createPasswordMessage.textContent = error.message;
       return;
     }
-    const localProfile = { name: pendingCreateName, kills: 0, playerKills: 0, damage: 0, playSeconds: 0 };
-    const localToken = `local-${passwordHash}`;
-    setCurrentAccount(localProfile, localToken);
-    saveLocalAccount(localProfile, localToken, passwordHash);
-    hideAccountDialog();
-    showMainMenu();
+    ui.createPasswordMessage.textContent = "Server could not create the account. Try again.";
   }
 });
 ui.signInForm.addEventListener("submit", async (event) => {
