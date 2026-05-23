@@ -366,6 +366,7 @@ let onlineLastSend = 0;
 const onlineActorsByRole = new Map();
 const onlineRolesByActor = new Map();
 const accountStorageKey = "duelGunArenaAccount";
+const accountBookStorageKey = "duelGunArenaAccounts";
 let currentAccount = null;
 let pendingCreateName = "";
 let profileWasPlaying = false;
@@ -516,9 +517,63 @@ function saveAccountSession() {
   localStorage.setItem(accountStorageKey, JSON.stringify(currentAccount));
 }
 
+function loadLocalAccounts() {
+  try {
+    return JSON.parse(localStorage.getItem(accountBookStorageKey) || "{}");
+  } catch {
+    localStorage.removeItem(accountBookStorageKey);
+    return {};
+  }
+}
+
+function saveLocalAccounts(accounts) {
+  localStorage.setItem(accountBookStorageKey, JSON.stringify(accounts));
+}
+
+function accountKey(name) {
+  return String(name || "").trim().toLowerCase();
+}
+
+async function localPasswordHash(password) {
+  const bytes = new TextEncoder().encode(String(password || ""));
+  if (crypto?.subtle) {
+    const digest = await crypto.subtle.digest("SHA-256", bytes);
+    return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  }
+  let hash = 0;
+  for (const byte of bytes) hash = ((hash << 5) - hash + byte) | 0;
+  return `fallback-${Math.abs(hash)}`;
+}
+
+function saveLocalAccount(profile, token, passwordHash = null) {
+  if (!profile?.name) return;
+  const accounts = loadLocalAccounts();
+  const key = accountKey(profile.name);
+  accounts[key] = {
+    ...(accounts[key] || {}),
+    ...profile,
+    token,
+    passwordHash: passwordHash || accounts[key]?.passwordHash || null,
+  };
+  saveLocalAccounts(accounts);
+}
+
+async function signInLocalAccount(name, password) {
+  const accounts = loadLocalAccounts();
+  const account = accounts[accountKey(name)];
+  if (!account) return null;
+  const typedHash = await localPasswordHash(password);
+  if (account.passwordHash && account.passwordHash !== typedHash) return null;
+  account.passwordHash = typedHash;
+  accounts[accountKey(account.name)] = account;
+  saveLocalAccounts(accounts);
+  return account;
+}
+
 function setCurrentAccount(profile, token) {
   currentAccount = { ...profile, token };
   saveAccountSession();
+  saveLocalAccount(currentAccount, token);
   updateProfilePanel();
 }
 
@@ -546,9 +601,8 @@ async function initAccount() {
     const data = await apiPost("/api/profile", stored);
     setCurrentAccount(data.profile, stored.token);
   } catch {
-    localStorage.removeItem(accountStorageKey);
-    currentAccount = null;
-    showAccountGate("Sign in again to play.");
+    saveAccountSession();
+    saveLocalAccount(currentAccount, currentAccount.token);
   }
 }
 
@@ -579,6 +633,8 @@ function addPendingStat(key, amount) {
   if (!currentAccount || !amount) return;
   pendingStats[key] += Math.max(0, Math.floor(amount));
   currentAccount[key] = Math.max(0, Math.floor((currentAccount[key] || 0) + amount));
+  saveAccountSession();
+  saveLocalAccount(currentAccount, currentAccount.token);
 }
 
 function trackDamageStats(target, amount, hpBefore, wasKilled) {
@@ -607,12 +663,15 @@ async function syncStats(force = false) {
     });
     currentAccount = { ...data.profile, token: currentAccount.token };
     saveAccountSession();
+    saveLocalAccount(currentAccount, currentAccount.token);
     updateProfilePanel();
   } catch {
     pendingStats.kills += delta.kills;
     pendingStats.playerKills += delta.playerKills;
     pendingStats.damage += delta.damage;
     pendingStats.playSeconds += delta.playSeconds;
+    saveAccountSession();
+    saveLocalAccount(currentAccount, currentAccount.token);
   }
 }
 
@@ -4591,8 +4650,14 @@ document.querySelectorAll(".accountBack").forEach((button) => {
 ui.createNameForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   ui.createNameMessage.textContent = "";
+  const localAccounts = loadLocalAccounts();
+  const typedName = ui.createName.value.trim();
+  if (localAccounts[accountKey(typedName)]) {
+    ui.createNameMessage.textContent = "name existed, try another";
+    return;
+  }
   try {
-    const data = await apiPost("/api/check-name", { name: ui.createName.value });
+    const data = await apiPost("/api/check-name", { name: typedName });
     pendingCreateName = data.name;
     ui.createPassword.value = "";
     ui.createPasswordMessage.textContent = "";
@@ -4605,16 +4670,27 @@ ui.createNameForm.addEventListener("submit", async (event) => {
 ui.createPasswordForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   ui.createPasswordMessage.textContent = "";
+  const passwordHash = await localPasswordHash(ui.createPassword.value);
   try {
     const data = await apiPost("/api/create-account", {
       name: pendingCreateName,
       password: ui.createPassword.value,
     });
     setCurrentAccount(data.profile, data.token);
+    saveLocalAccount(data.profile, data.token, passwordHash);
     hideAccountDialog();
     showMainMenu();
   } catch (error) {
-    ui.createPasswordMessage.textContent = error.message;
+    if (error.message === "name existed, try another") {
+      ui.createPasswordMessage.textContent = error.message;
+      return;
+    }
+    const localProfile = { name: pendingCreateName, kills: 0, playerKills: 0, damage: 0, playSeconds: 0 };
+    const localToken = `local-${passwordHash}`;
+    setCurrentAccount(localProfile, localToken);
+    saveLocalAccount(localProfile, localToken, passwordHash);
+    hideAccountDialog();
+    showMainMenu();
   }
 });
 ui.signInForm.addEventListener("submit", async (event) => {
@@ -4626,15 +4702,24 @@ ui.signInForm.addEventListener("submit", async (event) => {
       password: ui.signInPassword.value,
     });
     setCurrentAccount(data.profile, data.token);
+    saveLocalAccount(data.profile, data.token, await localPasswordHash(ui.signInPassword.value));
     hideAccountDialog();
     showMainMenu();
   } catch (error) {
+    const localAccount = await signInLocalAccount(ui.signInName.value, ui.signInPassword.value);
+    if (localAccount) {
+      setCurrentAccount(localAccount, localAccount.token);
+      hideAccountDialog();
+      showMainMenu();
+      return;
+    }
     ui.signInMessage.textContent = error.message;
   }
 });
 ui.profileClose.addEventListener("click", closeProfileMenu);
 ui.signOutButton.addEventListener("click", () => {
   syncStats(true);
+  if (currentAccount) saveLocalAccount(currentAccount, currentAccount.token);
   localStorage.removeItem(accountStorageKey);
   currentAccount = null;
   pendingStats = { kills: 0, playerKills: 0, damage: 0, playSeconds: 0 };
