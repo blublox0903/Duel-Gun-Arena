@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>CPU Duel Arena</title>
-    <link rel="stylesheet" href="./styles.css?v=20260523-1" />
+    <link rel="stylesheet" href="./styles.css?v=20260523-2" />
   </head>
   <body>
     <main id="game">
@@ -50,6 +50,7 @@
         <div class="scope-overlay" aria-hidden="true"></div>
         <div id="lockPrompt">Click game to lock mouse. Press Esc to unlock.</div>
         <button id="profileButton" type="button">Profile</button>
+        <button id="shopButton" type="button">Shop</button>
         <div class="top-buttons">
           <button id="hackButton" type="button">Hack Off</button>
           <button id="pauseButton" type="button">Pause</button>
@@ -94,6 +95,8 @@
         </div>
       </section>
 
+      <div id="menuCoins" hidden><span>Coins</span><strong>0</strong></div>
+
       <section id="hackDialog" hidden aria-label="Hack password">
         <form id="hackForm">
           <label for="hackPassword">Hack Password</label>
@@ -104,6 +107,40 @@
             <button id="hackCancel" type="button">Cancel</button>
           </div>
         </form>
+      </section>
+
+      <section id="shopDialog" hidden aria-label="Weapon shop">
+        <div class="shop-shell">
+          <div class="shop-head">
+            <div>
+              <h2>Weapon Shop</h2>
+              <p id="shopCoins">0 coins</p>
+            </div>
+            <button id="shopClose" type="button">Close</button>
+          </div>
+          <div class="shop-layout">
+            <aside class="shop-list">
+              <div class="shop-tabs">
+                <button class="active" type="button" data-shop-category="primary">Primary</button>
+                <button type="button" data-shop-category="secondary">Secondary</button>
+                <button type="button" data-shop-category="melee">Melee</button>
+                <button type="button" data-shop-category="utility">Utility</button>
+              </div>
+              <div id="shopGrid"></div>
+            </aside>
+            <div class="shop-detail">
+              <div class="shop-preview-wrap">
+                <canvas id="shopPreview"></canvas>
+              </div>
+              <div class="shop-info">
+                <h3 id="shopWeaponName">Weapon</h3>
+                <div id="shopWeaponStats"></div>
+                <p id="shopMessage"></p>
+                <button id="shopBuy" type="button">Buy</button>
+              </div>
+            </div>
+          </div>
+        </div>
       </section>
 
       <section id="accountDialog" aria-label="Account menu">
@@ -176,6 +213,6 @@
         }
       }
     </script>
-    <script type="module" src="./game.js?v=20260523-1"></script>
+    <script type="module" src="./game.js?v=20260523-2"></script>
   </body>
 </html>

@@ -213,6 +213,32 @@ const loadoutChoices = {
   utility: ["grenade", "smokegrenade"],
 };
 const cpuPrimaryChoices = ["rifle", "trishot", "sniper", "bunker", "lasergun"];
+const freeWeapons = ["rifle", "handgun", "fist", "grenade"];
+const weaponPrices = {
+  trishot: 1000,
+  sniper: 2500,
+  lasergun: 5000,
+  bunker: 3000,
+  revolver: 900,
+  energypistol: 3000,
+  trowel: 2000,
+  scythe: 800,
+  katana: 1500,
+  smokegrenade: 500,
+};
+const coinAwards = {
+  "1v1": 100,
+  "2v2": 150,
+  juggernaut: 200,
+  online: 150,
+  online2v2: 200,
+};
+const defaultLoadout = {
+  primary: "rifle",
+  secondary: "handgun",
+  melee: "fist",
+  utility: "grenade",
+};
 
 const canvas = document.querySelector("#arena");
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -389,7 +415,12 @@ let pendingStats = {
   playerKills: 0,
   damage: 0,
   playSeconds: 0,
+  coins: 0,
 };
+let shopWasPlaying = false;
+let shopCategory = "primary";
+let selectedShopWeapon = "rifle";
+let shopPreviewModel = null;
 
 const ui = {
   playerHp: document.querySelector("#playerHp"),
@@ -421,6 +452,17 @@ const ui = {
   hackMessage: document.querySelector("#hackMessage"),
   hackCancel: document.querySelector("#hackCancel"),
   profileButton: document.querySelector("#profileButton"),
+  shopButton: document.querySelector("#shopButton"),
+  menuCoins: document.querySelector("#menuCoins"),
+  shopDialog: document.querySelector("#shopDialog"),
+  shopClose: document.querySelector("#shopClose"),
+  shopCoins: document.querySelector("#shopCoins"),
+  shopGrid: document.querySelector("#shopGrid"),
+  shopWeaponName: document.querySelector("#shopWeaponName"),
+  shopWeaponStats: document.querySelector("#shopWeaponStats"),
+  shopMessage: document.querySelector("#shopMessage"),
+  shopBuy: document.querySelector("#shopBuy"),
+  shopPreview: document.querySelector("#shopPreview"),
   accountDialog: document.querySelector("#accountDialog"),
   accountChoice: document.querySelector("#accountChoice"),
   accountMessage: document.querySelector("#accountMessage"),
@@ -478,6 +520,15 @@ scene.add(enemyCpu2Mesh);
 const playerProxy = makeFighter(0x4fb477, 0x27313a);
 playerProxy.visible = false;
 scene.add(playerProxy);
+const shopRenderer = new THREE.WebGLRenderer({ canvas: ui.shopPreview, antialias: true, alpha: true });
+shopRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+const shopScene = new THREE.Scene();
+const shopCamera = new THREE.PerspectiveCamera(42, 1, 0.1, 20);
+shopCamera.position.set(0, 0.02, 2.8);
+shopScene.add(new THREE.HemisphereLight(0xffffff, 0x223344, 2.4));
+const shopLight = new THREE.DirectionalLight(0xffffff, 2.4);
+shopLight.position.set(2.2, 2.8, 3.2);
+shopScene.add(shopLight);
 
 function isOnlineMode() {
   return selectedMode === "online" || selectedMode === "online2v2";
@@ -563,7 +614,10 @@ function saveLocalAccount(profile, token, passwordHash = null) {
   const key = accountKey(profile.name);
   accounts[key] = {
     ...(accounts[key] || {}),
+    coins: 0,
+    unlocked: [...freeWeapons],
     ...profile,
+    unlocked: normalizeUnlocks(profile),
     token,
     passwordHash: passwordHash || accounts[key]?.passwordHash || null,
   };
@@ -583,7 +637,8 @@ async function signInLocalAccount(name, password) {
 }
 
 function setCurrentAccount(profile, token) {
-  currentAccount = { ...profile, token };
+  currentAccount = { coins: 0, unlocked: [...freeWeapons], ...profile, token };
+  currentAccount.unlocked = normalizeUnlocks(currentAccount);
   saveAccountSession();
   saveLocalAccount(currentAccount, token);
   updateProfilePanel();
@@ -605,8 +660,11 @@ async function initAccount() {
     playerKills: 0,
     damage: 0,
     playSeconds: 0,
+    coins: 0,
+    unlocked: [...freeWeapons],
     ...stored,
   };
+  currentAccount.unlocked = normalizeUnlocks(currentAccount);
   hideAccountDialog();
   showMainMenu();
   try {
@@ -625,6 +683,22 @@ function formatBigNumber(value) {
   return `${number}`;
 }
 
+function normalizeUnlocks(profile) {
+  const unlocked = Array.isArray(profile?.unlocked) ? profile.unlocked : [];
+  return [...new Set([...freeWeapons, ...unlocked])].filter((weapon) => weapons[weapon]);
+}
+
+function accountHasWeapon(weaponKey) {
+  return freeWeapons.includes(weaponKey) || normalizeUnlocks(currentAccount).includes(weaponKey);
+}
+
+function ensureLoadoutUnlocked() {
+  for (const slot of loadoutSlots) {
+    if (!accountHasWeapon(playerLoadout[slot])) playerLoadout[slot] = defaultLoadout[slot];
+  }
+  if (!accountHasWeapon(player.weapon)) player.weapon = playerLoadout.primary;
+}
+
 function formatPlayTime(seconds) {
   const totalMinutes = Math.floor(Math.max(0, seconds || 0) / 60);
   const hours = Math.floor(totalMinutes / 60);
@@ -634,11 +708,16 @@ function formatPlayTime(seconds) {
 
 function updateProfilePanel() {
   if (!currentAccount) return;
+  currentAccount.coins = Math.max(0, Math.floor(currentAccount.coins || 0));
+  currentAccount.unlocked = normalizeUnlocks(currentAccount);
   ui.profileName.textContent = currentAccount.name;
   ui.profileKills.textContent = formatBigNumber(currentAccount.kills);
   ui.profilePlayerKills.textContent = formatBigNumber(currentAccount.playerKills);
   ui.profilePlayTime.textContent = formatPlayTime(currentAccount.playSeconds);
   ui.profileDamage.textContent = formatBigNumber(currentAccount.damage);
+  ui.menuCoins.hidden = false;
+  ui.menuCoins.querySelector("strong").textContent = formatBigNumber(currentAccount.coins);
+  ui.shopCoins.textContent = `${formatBigNumber(currentAccount.coins)} coins`;
 }
 
 function addPendingStat(key, amount) {
@@ -647,6 +726,7 @@ function addPendingStat(key, amount) {
   currentAccount[key] = Math.max(0, Math.floor((currentAccount[key] || 0) + amount));
   saveAccountSession();
   saveLocalAccount(currentAccount, currentAccount.token);
+  updateProfilePanel();
 }
 
 function trackDamageStats(target, amount, hpBefore, wasKilled) {
@@ -659,13 +739,20 @@ function trackDamageStats(target, amount, hpBefore, wasKilled) {
   }
 }
 
+function awardCoinsForMatchWin() {
+  const coins = coinAwards[selectedMode] ?? 100;
+  addPendingStat("coins", coins);
+  syncStats(true);
+  showRoundBanner(`Match won! +${coins} coins`);
+}
+
 async function syncStats(force = false) {
   if (!currentAccount?.token) return;
   const now = performance.now();
-  const hasStats = pendingStats.kills || pendingStats.playerKills || pendingStats.damage || pendingStats.playSeconds;
+  const hasStats = pendingStats.kills || pendingStats.playerKills || pendingStats.damage || pendingStats.playSeconds || pendingStats.coins;
   if (!hasStats || (!force && now - lastStatsFlush < 4500)) return;
   const delta = { ...pendingStats };
-  pendingStats = { kills: 0, playerKills: 0, damage: 0, playSeconds: 0 };
+  pendingStats = { kills: 0, playerKills: 0, damage: 0, playSeconds: 0, coins: 0 };
   lastStatsFlush = now;
   try {
     const data = await apiPost("/api/stats", {
@@ -682,6 +769,7 @@ async function syncStats(force = false) {
     pendingStats.playerKills += delta.playerKills;
     pendingStats.damage += delta.damage;
     pendingStats.playSeconds += delta.playSeconds;
+    pendingStats.coins += delta.coins;
     saveAccountSession();
     saveLocalAccount(currentAccount, currentAccount.token);
   }
@@ -692,6 +780,7 @@ async function openProfileMenu() {
     showAccountGate();
     return;
   }
+  ensureLoadoutUnlocked();
   profileWasPlaying = !gameOver && !paused;
   paused = profileWasPlaying || paused;
   releasePointerLock();
@@ -709,6 +798,133 @@ function closeProfileMenu() {
     requestPointerLock();
   }
   profileWasPlaying = false;
+}
+
+function openShopMenu() {
+  if (!currentAccount) {
+    showAccountGate();
+    return;
+  }
+  shopWasPlaying = !gameOver && !paused;
+  paused = shopWasPlaying || paused;
+  releasePointerLock();
+  document.body.classList.add("shop-open");
+  ui.shopDialog.hidden = false;
+  renderShop();
+}
+
+function closeShopMenu() {
+  ui.shopDialog.hidden = true;
+  document.body.classList.remove("shop-open");
+  shopMessage("");
+  if (shopWasPlaying && !gameOver) {
+    paused = false;
+    requestPointerLock();
+  }
+  shopWasPlaying = false;
+}
+
+function shopMessage(text, bad = false) {
+  ui.shopMessage.textContent = text;
+  ui.shopMessage.classList.toggle("bad", bad);
+}
+
+function renderShop() {
+  const choices = loadoutChoices[shopCategory];
+  ui.shopCoins.textContent = `${formatBigNumber(currentAccount?.coins || 0)} coins`;
+  document.querySelectorAll(".shop-tabs button").forEach((button) => {
+    button.classList.toggle("active", button.dataset.shopCategory === shopCategory);
+  });
+  if (!choices.includes(selectedShopWeapon)) selectedShopWeapon = choices[0];
+  ui.shopGrid.innerHTML = choices.map((weaponKey) => {
+    const weapon = weapons[weaponKey];
+    const owned = accountHasWeapon(weaponKey);
+    const price = weaponPrices[weaponKey] ?? 0;
+    return `<button type="button" data-shop-weapon="${weaponKey}" class="${owned ? "owned" : "locked"} ${weaponKey === selectedShopWeapon ? "selected" : ""}">
+      <strong>${weapon.name}</strong>
+      <span>${owned ? "Owned" : `${formatBigNumber(price)} coins`}</span>
+    </button>`;
+  }).join("");
+  renderShopDetail();
+}
+
+function renderShopDetail() {
+  const weapon = weapons[selectedShopWeapon];
+  const owned = accountHasWeapon(selectedShopWeapon);
+  const price = weaponPrices[selectedShopWeapon] ?? 0;
+  ui.shopWeaponName.textContent = weapon.name;
+  const speed = isGunWeapon(selectedShopWeapon)
+    ? weapon.auto
+      ? `Every ${(weapon.fireMs / 1000).toFixed(2)}s while holding`
+      : `Single shot, ${(weapon.fireMs / 1000).toFixed(2)}s cooldown`
+    : `${(weapon.fireMs / 1000).toFixed(2)}s cooldown`;
+  ui.shopWeaponStats.innerHTML = [
+    ["Damage", weapon.headDamage ? `${weapon.damage} body / ${weapon.headDamage} head` : `${weapon.damage ?? 0}`],
+    ["Magazine", Number.isFinite(weapon.magSize) ? `${weapon.magSize}` : "No ammo"],
+    ["Shooting speed", speed],
+    ["Reload", weapon.reloadMs ? `${(weapon.reloadMs / 1000).toFixed(1)}s` : "No reload"],
+  ].map(([label, value]) => `<div><span>${label}</span><strong>${value}</strong></div>`).join("");
+  ui.shopBuy.hidden = owned || !price;
+  ui.shopBuy.disabled = !currentAccount || (currentAccount.coins || 0) < price;
+  ui.shopBuy.textContent = price ? `Buy ${formatBigNumber(price)}` : "Owned";
+  shopMessage(owned ? "You own this weapon." : ui.shopBuy.disabled ? "Not enough coins yet." : "Ready to buy.");
+  updateShopPreview(selectedShopWeapon, !owned);
+}
+
+function updateShopPreview(weaponKey, locked = false) {
+  if (shopPreviewModel) {
+    shopScene.remove(shopPreviewModel);
+    shopPreviewModel.traverse((child) => {
+      if (child.material?.dispose) child.material.dispose();
+    });
+    shopPreviewModel = null;
+  }
+  const source = viewModel.userData.models[weaponKey];
+  if (!source) return;
+  shopPreviewModel = source.clone(true);
+  shopPreviewModel.visible = true;
+  shopPreviewModel.position.set(0, -0.05, 0.15);
+  shopPreviewModel.rotation.set(-0.1, -0.45, 0.02);
+  shopPreviewModel.scale.setScalar(1.25);
+  shopPreviewModel.traverse((child) => {
+    if (!child.isMesh) return;
+    child.material = child.material.clone();
+    child.visible = true;
+    if (locked && child.material.color) child.material.color.multiplyScalar(0.28);
+  });
+  shopScene.add(shopPreviewModel);
+}
+
+function renderShopPreview() {
+  if (ui.shopDialog.hidden || !shopPreviewModel) return;
+  const rect = ui.shopPreview.getBoundingClientRect();
+  const width = Math.max(1, Math.floor(rect.width));
+  const height = Math.max(1, Math.floor(rect.height));
+  if (ui.shopPreview.width !== width || ui.shopPreview.height !== height) {
+    shopRenderer.setSize(width, height, false);
+    shopCamera.aspect = width / height;
+    shopCamera.updateProjectionMatrix();
+  }
+  shopPreviewModel.rotation.y += 0.01;
+  shopRenderer.render(shopScene, shopCamera);
+}
+
+async function buySelectedWeapon() {
+  if (!currentAccount || accountHasWeapon(selectedShopWeapon)) return;
+  try {
+    const data = await apiPost("/api/buy", {
+      name: currentAccount.name,
+      token: currentAccount.token,
+      weapon: selectedShopWeapon,
+    });
+    setCurrentAccount(data.profile, currentAccount.token);
+    ensureLoadoutUnlocked();
+    updateQuickbar();
+    renderShop();
+    shopMessage("Purchased.");
+  } catch (error) {
+    shopMessage(error.message || "Could not buy weapon.", true);
+  }
 }
 
 function buildWorld() {
@@ -1780,6 +1996,7 @@ function showMainMenu() {
   clearRoundCountdown();
   releasePointerLock();
   if (isOnlineMode()) closeOnline();
+  ensureLoadoutUnlocked();
   menuState = "main";
   spectatingActor = null;
   roundEnding = false;
@@ -1849,6 +2066,7 @@ function chooseMode(mode) {
 }
 
 function startLoadoutSelection(midRound = false) {
+  ensureLoadoutUnlocked();
   changingLoadoutMidRound = midRound;
   loadoutStep = 0;
   menuState = "loadout";
@@ -1871,13 +2089,15 @@ function renderLoadoutStep() {
   ui.loadoutMenu.querySelector(".loadout-options").innerHTML = loadoutChoices[slot]
     .map((weaponKey) => {
       const weapon = weapons[weaponKey];
+      const owned = accountHasWeapon(weaponKey);
       const detail = weaponKey === "sniper"
         ? `Head only / ${weapon.headDamage} head`
         : weapon.headDamage
         ? `${weapon.damage} body / ${weapon.headDamage} head`
         : `${weapon.damage} damage`;
       const ammo = Number.isFinite(weapon.magSize) ? `${weapon.magSize} mag` : "No ammo";
-      return `<button type="button" data-weapon="${weaponKey}"><strong>${weapon.name}</strong><span>${detail} | ${ammo}</span></button>`;
+      const price = weaponPrices[weaponKey] ? ` | ${weaponPrices[weaponKey]} coins` : "";
+      return `<button type="button" data-weapon="${weaponKey}" ${owned ? "" : "disabled"} class="${owned ? "" : "locked"}"><strong>${weapon.name}</strong><span>${owned ? `${detail} | ${ammo}` : `Locked${price}`}</span></button>`;
     })
     .join("");
 }
@@ -1885,6 +2105,7 @@ function renderLoadoutStep() {
 function chooseLoadoutWeapon(weaponKey) {
   const slot = loadoutSlots[loadoutStep];
   if (!loadoutChoices[slot].includes(weaponKey)) return;
+  if (!accountHasWeapon(weaponKey)) return;
   playerLoadout[slot] = weaponKey;
   loadoutStep += 1;
   if (loadoutStep < loadoutSlots.length) {
@@ -2227,6 +2448,7 @@ function resetCombatActor(actor, x, z, maxHp = MAX_HP, visualScale = 1) {
 
 function startRound(frozenCountdown = false) {
   if (!frozenCountdown) clearRoundCountdown();
+  ensureLoadoutUnlocked();
   menuState = "playing";
   spectatingActor = null;
   roundEnding = false;
@@ -2421,6 +2643,7 @@ function facePlayerToward(target) {
 
 function setWeapon(weapon) {
   if (!weapons[weapon] || gameOver || isPlayerSpectating()) return;
+  if (!accountHasWeapon(weapon)) return;
   player.weapon = weapon;
   player.reloading = null;
   player.burstQueue = 0;
@@ -3276,6 +3499,7 @@ function endRound(playerWon, winnerActor = null) {
 
   const matchWon = playerScore >= MATCH_POINTS || cpuScore >= MATCH_POINTS;
   matchFinished = matchWon;
+  if (matchWon && playerWon) awardCoinsForMatchWin();
 }
 
 function finishRoundEnding() {
@@ -4140,6 +4364,7 @@ function animate() {
   }
   syncStats(false);
   updateSniperAimLights();
+  renderShopPreview();
   updateHud();
   renderer.render(scene, camera);
 }
@@ -4556,6 +4781,10 @@ function updateAutoFire(now) {
 
 window.addEventListener("resize", resize);
 window.addEventListener("keydown", (event) => {
+  if (!ui.shopDialog.hidden) {
+    if (event.code === "Escape") closeShopMenu();
+    return;
+  }
   if (!ui.accountDialog.hidden) {
     if (event.code === "Escape" && !ui.profileMenu.hidden) closeProfileMenu();
     return;
@@ -4720,6 +4949,24 @@ ui.hackCancel.addEventListener("click", closeHackDialog);
 ui.accountDialog.addEventListener("mousedown", (event) => event.stopPropagation());
 ui.accountDialog.addEventListener("pointerdown", (event) => event.stopPropagation());
 ui.profileButton.addEventListener("click", openProfileMenu);
+ui.shopButton.addEventListener("click", openShopMenu);
+ui.shopDialog.addEventListener("mousedown", (event) => event.stopPropagation());
+ui.shopDialog.addEventListener("pointerdown", (event) => event.stopPropagation());
+ui.shopClose.addEventListener("click", closeShopMenu);
+ui.shopBuy.addEventListener("click", buySelectedWeapon);
+document.querySelector(".shop-tabs")?.addEventListener("click", (event) => {
+  const button = event.target.closest("button[data-shop-category]");
+  if (!button) return;
+  shopCategory = button.dataset.shopCategory;
+  selectedShopWeapon = loadoutChoices[shopCategory][0];
+  renderShop();
+});
+ui.shopGrid.addEventListener("click", (event) => {
+  const button = event.target.closest("button[data-shop-weapon]");
+  if (!button) return;
+  selectedShopWeapon = button.dataset.shopWeapon;
+  renderShop();
+});
 ui.createAccountButton.addEventListener("click", () => {
   ui.createName.value = "";
   ui.createNameMessage.textContent = "";
@@ -4809,7 +5056,7 @@ ui.signOutButton.addEventListener("click", () => {
   if (currentAccount) saveLocalAccount(currentAccount, currentAccount.token);
   localStorage.removeItem(accountStorageKey);
   currentAccount = null;
-  pendingStats = { kills: 0, playerKills: 0, damage: 0, playSeconds: 0 };
+  pendingStats = { kills: 0, playerKills: 0, damage: 0, playSeconds: 0, coins: 0 };
   profileWasPlaying = false;
   showAccountGate("Signed out.");
 });

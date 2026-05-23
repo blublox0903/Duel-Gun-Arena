@@ -70,8 +70,13 @@ body.account-open #hud {
   display: none;
 }
 
-body.account-open #overlay {
+body.account-open #overlay,
+body.shop-open #overlay {
   display: none !important;
+}
+
+body.shop-open #hud {
+  display: none;
 }
 
 body.mode-2v2:not(.in-menu) .bar-block.cpu,
@@ -471,7 +476,8 @@ body.aiming.weapon-revolver .scope-overlay {
 
 #pauseButton,
 #hackButton,
-#profileButton {
+#profileButton,
+#shopButton {
   min-width: 86px;
   min-height: 38px;
   border: 1px solid rgb(255 255 255 / 0.16);
@@ -511,7 +517,54 @@ body.hack-flying #hackButton {
   top: 112px;
   left: 18px;
   z-index: 60;
+  min-width: 108px;
+  min-height: 44px;
   pointer-events: auto;
+}
+
+#shopButton {
+  position: absolute;
+  top: 164px;
+  left: 18px;
+  z-index: 60;
+  min-width: 108px;
+  min-height: 44px;
+  border-color: rgb(244 211 94 / 0.72);
+  background: rgb(244 211 94 / 0.18);
+  pointer-events: auto;
+}
+
+#menuCoins {
+  position: fixed;
+  top: 18px;
+  right: 18px;
+  z-index: 80;
+  min-width: 132px;
+  padding: 10px 12px;
+  border: 1px solid rgb(244 211 94 / 0.38);
+  border-radius: 8px;
+  background: rgb(6 8 11 / 0.78);
+  text-align: right;
+  backdrop-filter: blur(10px);
+}
+
+#menuCoins span {
+  display: block;
+  color: #b8c5d2;
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+#menuCoins strong {
+  color: #f4d35e;
+  font-size: 24px;
+}
+
+body.account-open #menuCoins,
+body.shop-open #menuCoins,
+body:not(.in-menu) #menuCoins {
+  display: none;
 }
 
 #lockPrompt {
@@ -570,7 +623,8 @@ body.hack-flying #hackButton {
 }
 
 #hackDialog,
-#accountDialog {
+#accountDialog,
+#shopDialog {
   position: fixed;
   inset: 0;
   z-index: 95;
@@ -588,8 +642,16 @@ body.hack-flying #hackButton {
     #020508;
 }
 
+#shopDialog {
+  z-index: 108;
+  background:
+    linear-gradient(135deg, rgb(9 14 20 / 0.98), rgb(2 5 8 / 0.98)),
+    #020508;
+}
+
 #hackDialog[hidden],
-#accountDialog[hidden] {
+#accountDialog[hidden],
+#shopDialog[hidden] {
   display: none;
 }
 
@@ -709,6 +771,164 @@ body.hack-flying #hackButton {
   color: #f4d35e;
   font-size: 16px;
   text-align: right;
+}
+
+.shop-shell {
+  width: min(1120px, calc(100vw - 32px));
+  height: min(760px, calc(100vh - 32px));
+  display: grid;
+  grid-template-rows: auto 1fr;
+  gap: 14px;
+}
+
+.shop-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.shop-head h2 {
+  margin: 0;
+  font-size: 34px;
+  line-height: 1;
+}
+
+.shop-head p,
+#shopMessage {
+  margin: 6px 0 0;
+  color: #f4d35e;
+  font-weight: 900;
+}
+
+#shopMessage.bad {
+  color: #ffb0b0;
+}
+
+.shop-layout {
+  display: grid;
+  min-height: 0;
+  grid-template-columns: minmax(250px, 340px) 1fr;
+  gap: 18px;
+}
+
+.shop-list,
+.shop-detail {
+  min-height: 0;
+  border: 1px solid rgb(255 255 255 / 0.14);
+  border-radius: 8px;
+  background: rgb(6 8 11 / 0.74);
+}
+
+.shop-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  padding: 12px;
+}
+
+.shop-tabs button,
+#shopGrid button,
+#shopClose,
+#shopBuy {
+  min-height: 40px;
+  border: 1px solid rgb(255 255 255 / 0.16);
+  border-radius: 8px;
+  background: rgb(255 255 255 / 0.08);
+  color: #f7fbff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.shop-tabs button.active,
+#shopGrid button.selected,
+#shopBuy:not(:disabled) {
+  border-color: rgb(244 211 94 / 0.68);
+  background: rgb(244 211 94 / 0.2);
+}
+
+#shopGrid {
+  display: grid;
+  max-height: calc(100% - 88px);
+  gap: 8px;
+  overflow: auto;
+  padding: 0 12px 12px;
+}
+
+#shopGrid button {
+  min-height: 62px;
+  padding: 10px;
+  text-align: left;
+}
+
+#shopGrid button span {
+  display: block;
+  margin-top: 4px;
+  color: #b8c5d2;
+  font-size: 12px;
+}
+
+#shopGrid button.locked {
+  filter: grayscale(1) brightness(0.52);
+}
+
+.shop-detail {
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) minmax(270px, 340px);
+  gap: 18px;
+  padding: 16px;
+}
+
+.shop-preview-wrap {
+  min-height: 320px;
+  border: 1px solid rgb(255 255 255 / 0.1);
+  border-radius: 8px;
+  background: radial-gradient(circle at 45% 35%, rgb(255 255 255 / 0.08), rgb(0 0 0 / 0.2));
+}
+
+#shopPreview {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.shop-info h3 {
+  margin: 0 0 12px;
+  font-size: 32px;
+}
+
+#shopWeaponStats {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+#shopWeaponStats div {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 3px;
+  padding: 10px;
+  border: 1px solid rgb(255 255 255 / 0.1);
+  border-radius: 8px;
+  background: rgb(255 255 255 / 0.05);
+}
+
+#shopWeaponStats span {
+  color: #b8c5d2;
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+#shopWeaponStats strong {
+  color: #f8fbff;
+}
+
+#shopBuy:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 #overlay > div {
@@ -846,6 +1066,12 @@ p {
   cursor: pointer;
 }
 
+.loadout-options button.locked {
+  cursor: not-allowed;
+  filter: grayscale(1) brightness(0.45);
+  opacity: 0.78;
+}
+
 .loadout-options strong,
 .loadout-options span {
   display: block;
@@ -898,11 +1124,31 @@ p {
     left: 10px;
   }
 
+  #shopButton {
+    top: 178px;
+    left: 10px;
+  }
+
   #pauseButton,
   #hackButton,
-  #profileButton {
+  #profileButton,
+  #shopButton {
     min-width: 74px;
     padding: 0 8px;
+  }
+
+  .shop-layout,
+  .shop-detail {
+    grid-template-columns: 1fr;
+  }
+
+  .shop-shell {
+    height: calc(100vh - 24px);
+    overflow: auto;
+  }
+
+  .shop-preview-wrap {
+    min-height: 240px;
   }
 
   .weapon-panel {

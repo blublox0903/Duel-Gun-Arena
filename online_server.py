@@ -23,6 +23,19 @@ waiting_queues = {"online": [], "online2v2": []}
 rooms = {}
 MODE_SIZE = {"online": 2, "online2v2": 4}
 MODE_ROLES = {"online": ["a", "b"], "online2v2": ["a1", "a2", "b1", "b2"]}
+FREE_WEAPONS = ["rifle", "handgun", "fist", "grenade"]
+WEAPON_PRICES = {
+    "trishot": 1000,
+    "sniper": 2500,
+    "lasergun": 5000,
+    "bunker": 3000,
+    "revolver": 900,
+    "energypistol": 3000,
+    "trowel": 2000,
+    "scythe": 800,
+    "katana": 1500,
+    "smokegrenade": 500,
+}
 
 
 class Client:
@@ -172,12 +185,18 @@ def make_token(name, stored_hash):
 
 def public_profile(name, account):
     stats = account.setdefault("stats", {})
+    unlocked = account.setdefault("unlocked", FREE_WEAPONS.copy())
+    for weapon in FREE_WEAPONS:
+        if weapon not in unlocked:
+            unlocked.append(weapon)
     return {
         "name": account.get("name", name),
         "kills": int(stats.get("kills", 0)),
         "playerKills": int(stats.get("playerKills", 0)),
         "damage": int(stats.get("damage", 0)),
         "playSeconds": int(stats.get("playSeconds", 0)),
+        "coins": int(stats.get("coins", 0)),
+        "unlocked": unlocked,
     }
 
 
@@ -223,7 +242,8 @@ async def handle_api(writer, method, raw_path, body):
         accounts[key] = {
             "name": name,
             "passwordHash": stored_hash,
-            "stats": {"kills": 0, "playerKills": 0, "damage": 0, "playSeconds": 0},
+            "stats": {"kills": 0, "playerKills": 0, "damage": 0, "playSeconds": 0, "coins": 0},
+            "unlocked": FREE_WEAPONS.copy(),
         }
         save_accounts(accounts)
         await send_json(writer, "200 OK", {
@@ -272,8 +292,33 @@ async def handle_api(writer, method, raw_path, body):
             await send_json(writer, "403 Forbidden", {"ok": False, "message": "Sign in again"})
             return
         stats = account.setdefault("stats", {})
-        for stat_key in ["kills", "playerKills", "damage", "playSeconds"]:
+        for stat_key in ["kills", "playerKills", "damage", "playSeconds", "coins"]:
             stats[stat_key] = max(0, int(stats.get(stat_key, 0)) + int(payload.get(stat_key, 0) or 0))
+        save_accounts(accounts)
+        await send_json(writer, "200 OK", {"ok": True, "profile": public_profile(key, account)})
+        return
+
+    if path == "/api/buy":
+        key, account = auth_account(accounts, payload)
+        weapon = str(payload.get("weapon") or "")
+        if not account:
+            await send_json(writer, "403 Forbidden", {"ok": False, "message": "Sign in again"})
+            return
+        if weapon not in WEAPON_PRICES:
+            await send_json(writer, "400 Bad Request", {"ok": False, "message": "That weapon is not for sale"})
+            return
+        profile = public_profile(key, account)
+        if weapon in profile["unlocked"]:
+            await send_json(writer, "200 OK", {"ok": True, "profile": profile})
+            return
+        price = WEAPON_PRICES[weapon]
+        stats = account.setdefault("stats", {})
+        coins = int(stats.get("coins", 0))
+        if coins < price:
+            await send_json(writer, "400 Bad Request", {"ok": False, "message": "Not enough coins"})
+            return
+        stats["coins"] = coins - price
+        account.setdefault("unlocked", FREE_WEAPONS.copy()).append(weapon)
         save_accounts(accounts)
         await send_json(writer, "200 OK", {"ok": True, "profile": public_profile(key, account)})
         return
