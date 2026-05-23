@@ -81,7 +81,7 @@ const weapons = {
     damage: 15,
     magSize: 50,
     reloadMs: 5000,
-    fireMs: 60,
+    fireMs: 55,
     range: 52,
     spread: 0.006,
     tracerColor: 0x49f4ff,
