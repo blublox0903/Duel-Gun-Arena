@@ -4402,7 +4402,7 @@ window.addEventListener("keydown", (event) => {
     if (event.code === "Escape") closeHackDialog();
     return;
   }
-  if (["KeyW", "KeyA", "KeyS", "KeyD", "KeyC", "KeyQ", "KeyM", "Space"].includes(event.code)) {
+  if (["KeyW", "KeyA", "KeyS", "KeyD", "KeyC", "KeyE", "KeyQ", "KeyM", "Space"].includes(event.code)) {
     event.preventDefault();
   }
   const wasPressed = keys.has(event.code);
@@ -4425,6 +4425,10 @@ window.addEventListener("keydown", (event) => {
   if (event.code === "Digit2") setWeapon(playerLoadout.secondary);
   if (event.code === "Digit3") setWeapon(playerLoadout.melee);
   if (event.code === "Digit4") setWeapon(playerLoadout.utility);
+  if (event.code === "KeyE" && !controlsFrozen() && !gameOver) {
+    aimHeld = canAimCurrentWeapon();
+    updateAimState();
+  }
   if (event.code === "KeyQ" && !wasPressed && !controlsFrozen()) quickMelee(performance.now());
   if (event.code === "KeyR" && !controlsFrozen()) reload(player, performance.now());
   if (event.code === "Space" && !wasPressed && hackEnabled && !gameOver && !controlsFrozen()) {
@@ -4447,6 +4451,10 @@ window.addEventListener("keyup", (event) => {
   keys.delete(event.code);
   if (event.code === "KeyC" && !gameOver && !isPlayerSpectating() && performance.now() >= player.slideUntil) {
     player.targetHeight = 1.7;
+  }
+  if (event.code === "KeyE") {
+    aimHeld = false;
+    updateAimState();
   }
 });
 window.addEventListener("mousemove", (event) => {

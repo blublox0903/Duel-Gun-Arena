@@ -70,6 +70,10 @@ body.account-open #hud {
   display: none;
 }
 
+body.account-open #overlay {
+  display: none !important;
+}
+
 body.mode-2v2:not(.in-menu) .bar-block.cpu,
 body.mode-online2v2:not(.in-menu) .bar-block.cpu {
   display: none;
@@ -562,8 +566,15 @@ body.hack-flying #hackButton {
   display: grid;
   place-items: center;
   padding: 20px;
-  background: rgb(2 5 8 / 0.52);
+  background: rgb(2 5 8 / 0.96);
   pointer-events: auto;
+}
+
+#accountDialog {
+  z-index: 110;
+  background:
+    linear-gradient(135deg, rgb(9 14 20 / 0.98), rgb(2 5 8 / 0.98)),
+    #020508;
 }
 
 #hackDialog[hidden],
