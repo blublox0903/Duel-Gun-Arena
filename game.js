@@ -513,10 +513,7 @@ async function apiPost(path, payload) {
 
 function saveAccountSession() {
   if (!currentAccount) return;
-  localStorage.setItem(accountStorageKey, JSON.stringify({
-    name: currentAccount.name,
-    token: currentAccount.token,
-  }));
+  localStorage.setItem(accountStorageKey, JSON.stringify(currentAccount));
 }
 
 function setCurrentAccount(profile, token) {
@@ -526,18 +523,31 @@ function setCurrentAccount(profile, token) {
 }
 
 async function initAccount() {
-  const stored = JSON.parse(localStorage.getItem(accountStorageKey) || "null");
+  let stored = null;
+  try {
+    stored = JSON.parse(localStorage.getItem(accountStorageKey) || "null");
+  } catch {
+    localStorage.removeItem(accountStorageKey);
+  }
   if (!stored?.name || !stored?.token) {
     showAccountGate();
     return;
   }
+  currentAccount = {
+    kills: 0,
+    playerKills: 0,
+    damage: 0,
+    playSeconds: 0,
+    ...stored,
+  };
+  hideAccountDialog();
+  showMainMenu();
   try {
     const data = await apiPost("/api/profile", stored);
     setCurrentAccount(data.profile, stored.token);
-    hideAccountDialog();
-    showMainMenu();
   } catch {
     localStorage.removeItem(accountStorageKey);
+    currentAccount = null;
     showAccountGate("Sign in again to play.");
   }
 }
@@ -596,6 +606,7 @@ async function syncStats(force = false) {
       ...delta,
     });
     currentAccount = { ...data.profile, token: currentAccount.token };
+    saveAccountSession();
     updateProfilePanel();
   } catch {
     pendingStats.kills += delta.kills;
