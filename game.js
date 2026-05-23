@@ -421,6 +421,9 @@ let shopWasPlaying = false;
 let shopCategory = "primary";
 let selectedShopWeapon = "rifle";
 let shopPreviewModel = null;
+let shopPreviewDragging = false;
+let shopPreviewLastX = 0;
+let shopPreviewLastY = 0;
 
 const ui = {
   playerHp: document.querySelector("#playerHp"),
@@ -881,18 +884,70 @@ function updateShopPreview(weaponKey, locked = false) {
   }
   const source = viewModel.userData.models[weaponKey];
   if (!source) return;
-  shopPreviewModel = source.clone(true);
-  shopPreviewModel.visible = true;
-  shopPreviewModel.position.set(0, -0.05, 0.15);
-  shopPreviewModel.rotation.set(-0.1, -0.45, 0.02);
-  shopPreviewModel.scale.setScalar(1.25);
-  shopPreviewModel.traverse((child) => {
+  const weaponClone = source.clone(true);
+  weaponClone.visible = true;
+  const handMeshes = [];
+  weaponClone.traverse((child) => {
     if (!child.isMesh) return;
+    if (weaponKey !== "fist" && isShopPreviewHandMesh(child)) {
+      handMeshes.push(child);
+      return;
+    }
     child.material = child.material.clone();
     child.visible = true;
     if (locked && child.material.color) child.material.color.multiplyScalar(0.28);
   });
+  handMeshes.forEach((mesh) => mesh.parent?.remove(mesh));
+
+  const box = new THREE.Box3().setFromObject(weaponClone);
+  const center = new THREE.Vector3();
+  const size = new THREE.Vector3();
+  box.getCenter(center);
+  box.getSize(size);
+  weaponClone.position.sub(center);
+
+  const largestSide = Math.max(size.x, size.y, size.z, 0.1);
+  const previewScale = THREE.MathUtils.clamp(1.7 / largestSide, 0.58, 1.55);
+  shopPreviewModel = new THREE.Group();
+  shopPreviewModel.add(weaponClone);
+  shopPreviewModel.rotation.set(-0.12, -0.45, 0.02);
+  shopPreviewModel.scale.setScalar(previewScale);
+  shopPreviewModel.visible = true;
+  shopCamera.position.set(0, 0.02, 4.2);
   shopScene.add(shopPreviewModel);
+}
+
+function isShopPreviewHandMesh(mesh) {
+  const material = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material;
+  return material?.color?.getHex?.() === 0xd6a982;
+}
+
+function handleShopPreviewDragStart(event) {
+  if (ui.shopDialog.hidden || !shopPreviewModel || event.button !== 0) return;
+  shopPreviewDragging = true;
+  shopPreviewLastX = event.clientX;
+  shopPreviewLastY = event.clientY;
+  ui.shopPreview.classList.add("dragging");
+  ui.shopPreview.setPointerCapture?.(event.pointerId);
+  event.preventDefault();
+}
+
+function handleShopPreviewDragMove(event) {
+  if (!shopPreviewDragging || !shopPreviewModel) return;
+  const dx = event.clientX - shopPreviewLastX;
+  const dy = event.clientY - shopPreviewLastY;
+  shopPreviewLastX = event.clientX;
+  shopPreviewLastY = event.clientY;
+  shopPreviewModel.rotation.y += dx * 0.012;
+  shopPreviewModel.rotation.x = THREE.MathUtils.clamp(shopPreviewModel.rotation.x + dy * 0.008, -0.95, 0.95);
+  event.preventDefault();
+}
+
+function handleShopPreviewDragEnd(event) {
+  if (!shopPreviewDragging) return;
+  shopPreviewDragging = false;
+  ui.shopPreview.classList.remove("dragging");
+  ui.shopPreview.releasePointerCapture?.(event.pointerId);
 }
 
 function renderShopPreview() {
@@ -905,7 +960,7 @@ function renderShopPreview() {
     shopCamera.aspect = width / height;
     shopCamera.updateProjectionMatrix();
   }
-  shopPreviewModel.rotation.y += 0.01;
+  if (!shopPreviewDragging) shopPreviewModel.rotation.y += 0.008;
   shopRenderer.render(shopScene, shopCamera);
 }
 
@@ -4954,6 +5009,10 @@ ui.shopDialog.addEventListener("mousedown", (event) => event.stopPropagation());
 ui.shopDialog.addEventListener("pointerdown", (event) => event.stopPropagation());
 ui.shopClose.addEventListener("click", closeShopMenu);
 ui.shopBuy.addEventListener("click", buySelectedWeapon);
+ui.shopPreview.addEventListener("pointerdown", handleShopPreviewDragStart);
+ui.shopPreview.addEventListener("pointermove", handleShopPreviewDragMove);
+ui.shopPreview.addEventListener("pointerup", handleShopPreviewDragEnd);
+ui.shopPreview.addEventListener("pointercancel", handleShopPreviewDragEnd);
 document.querySelector(".shop-tabs")?.addEventListener("click", (event) => {
   const button = event.target.closest("button[data-shop-category]");
   if (!button) return;
