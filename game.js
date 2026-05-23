@@ -73,6 +73,18 @@ const weapons = {
     range: 75,
     spread: 0.004,
   },
+  bunker: {
+    name: "Bunker",
+    category: "primary",
+    auto: true,
+    damage: 25,
+    headDamage: 50,
+    magSize: 7,
+    reloadMs: 5000,
+    fireMs: 900,
+    range: 68,
+    spread: 0.006,
+  },
   lasergun: {
     name: "Laser Gun",
     category: "primary",
@@ -195,12 +207,12 @@ const weapons = {
 
 const loadoutSlots = ["primary", "secondary", "melee", "utility"];
 const loadoutChoices = {
-  primary: ["rifle", "trishot", "sniper", "lasergun"],
+  primary: ["rifle", "trishot", "sniper", "bunker", "lasergun"],
   secondary: ["handgun", "revolver", "energypistol"],
   melee: ["fist", "scythe", "katana", "trowel"],
   utility: ["grenade", "smokegrenade"],
 };
-const cpuPrimaryChoices = ["rifle", "trishot", "sniper", "lasergun"];
+const cpuPrimaryChoices = ["rifle", "trishot", "sniper", "bunker", "lasergun"];
 
 const canvas = document.querySelector("#arena");
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -877,6 +889,7 @@ function makeViewModel() {
     rifle: makeRifleViewModel(),
     trishot: makeTriShotViewModel(),
     sniper: makeSniperViewModel(),
+    bunker: makeBunkerViewModel(),
     lasergun: makeLaserGunViewModel(),
     handgun: makeHandgunViewModel(),
     revolver: makeRevolverViewModel(),
@@ -1031,6 +1044,77 @@ function makeSniperViewModel() {
   barrelExtension.position.set(0, 0.01, -1.76);
   group.add(barrelExtension);
 
+  return group;
+}
+
+function makeBunkerViewModel() {
+  const group = new THREE.Group();
+  const bodyMat = new THREE.MeshStandardMaterial({ color: 0x3b3f38, roughness: 0.46, metalness: 0.42 });
+  const darkMat = new THREE.MeshStandardMaterial({ color: 0x151817, roughness: 0.42, metalness: 0.58 });
+  const bronzeMat = new THREE.MeshStandardMaterial({ color: 0x8a6a32, roughness: 0.36, metalness: 0.62 });
+  const scopeMat = new THREE.MeshStandardMaterial({ color: 0x0d1216, roughness: 0.25, metalness: 0.72 });
+  const glassMat = new THREE.MeshBasicMaterial({ color: 0xd7f7ff, transparent: true, opacity: 0.38 });
+  const handMat = new THREE.MeshStandardMaterial({ color: 0xd6a982, roughness: 0.72 });
+
+  const receiver = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.22, 0.88), bodyMat);
+  receiver.position.set(0, -0.01, -0.32);
+  group.add(receiver);
+
+  const reinforcedTop = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.08, 0.98), bronzeMat);
+  reinforcedTop.position.set(0, 0.13, -0.38);
+  group.add(reinforcedTop);
+
+  const handguard = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.18, 0.62), darkMat);
+  handguard.position.set(0, -0.02, -0.94);
+  group.add(handguard);
+
+  const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.027, 0.027, 1.08, 14), scopeMat);
+  barrel.rotation.x = Math.PI / 2;
+  barrel.position.set(0, 0.01, -1.54);
+  group.add(barrel);
+
+  const muzzleBrake = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.1, 0.18), bronzeMat);
+  muzzleBrake.position.set(0, 0.01, -2.12);
+  group.add(muzzleBrake);
+
+  const stock = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.2, 0.42), darkMat);
+  stock.position.set(0, -0.02, 0.28);
+  group.add(stock);
+
+  const grip = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.34, 0.14), darkMat);
+  grip.position.set(0.03, -0.3, -0.1);
+  grip.rotation.x = -0.28;
+  group.add(grip);
+
+  const mag = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.34, 0.24), bronzeMat);
+  mag.name = "bunkerMagazine";
+  mag.position.set(0.02, -0.32, -0.38);
+  mag.rotation.x = 0.08;
+  group.add(mag);
+  group.userData.magazine = rememberViewPart(mag);
+
+  const scope = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.62, 24, 1, true), scopeMat);
+  scope.rotation.x = Math.PI / 2;
+  scope.position.set(0, 0.31, -0.48);
+  group.add(scope);
+
+  const scopeGlass = new THREE.Mesh(new THREE.CircleGeometry(0.082, 24), glassMat);
+  scopeGlass.position.set(0, 0.31, -0.17);
+  group.add(scopeGlass);
+
+  for (const z of [-0.17, -0.79]) {
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.1, 0.012, 8, 28), scopeMat);
+    ring.position.set(0, 0.31, z);
+    group.add(ring);
+  }
+
+  for (const x of [-0.12, 0.12]) {
+    const sideRail = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.045, 0.82), bronzeMat);
+    sideRail.position.set(x, 0.055, -0.8);
+    group.add(sideRail);
+  }
+
+  addViewHands(group, handMat, "rifle");
   return group;
 }
 
@@ -2079,9 +2163,10 @@ function freshAmmo() {
 
 function chooseCpuPrimary() {
   const roll = Math.random();
-  if (roll < 0.48) return "rifle";
-  if (roll < 0.8) return "trishot";
-  return "sniper";
+  if (roll < 0.4) return "rifle";
+  if (roll < 0.68) return "trishot";
+  if (roll < 0.84) return "bunker";
+  return Math.random() < 0.72 ? "sniper" : "lasergun";
 }
 
 function assignCpuLoadout(actor) {
@@ -2356,6 +2441,7 @@ function updateWeaponClass() {
     "weapon-rifle",
     "weapon-trishot",
     "weapon-sniper",
+    "weapon-bunker",
     "weapon-lasergun",
     "weapon-handgun",
     "weapon-revolver",
@@ -2470,6 +2556,8 @@ function updateHud() {
   } else {
     ui.weaponHint.textContent = player.weapon === "sniper"
       ? `Head only / ${weapon.headDamage} head`
+      : player.weapon === "bunker"
+      ? `${weapon.damage} body / ${weapon.headDamage} head / Hold fire`
       : player.weapon === "smokegrenade"
       ? "Creates smoke / No damage"
       : player.weapon === "scythe"
@@ -2869,7 +2957,7 @@ function fireBullet(attacker, defenders, weapon, isPlayer, preferredTarget) {
     applyWeaponRecoil(weapon);
   } else {
     direction.copy(getActorAimPoint(preferredTarget, attacker.weapon)).sub(origin).normalize();
-    const cpuSpread = weapon.spread * (attacker.weapon === "sniper" ? 4.5 : 5.2);
+    const cpuSpread = weapon.spread * (attacker.weapon === "sniper" || attacker.weapon === "bunker" ? 4.5 : 5.2);
     direction.x += (Math.random() - 0.5) * cpuSpread;
     direction.y += (Math.random() - 0.5) * cpuSpread * 0.65;
     direction.z += (Math.random() - 0.5) * cpuSpread;
@@ -2929,7 +3017,7 @@ function fireBullet(attacker, defenders, weapon, isPlayer, preferredTarget) {
 function getActorAimPoint(actor, weaponKey = "rifle") {
   const feetY = actor.feetY ?? 0;
   const actorHeight = Math.max(1.45, (actor.height ?? 1.7) * 1.28);
-  const y = weaponKey === "sniper"
+  const y = weaponKey === "sniper" || weaponKey === "bunker"
     ? feetY + actorHeight * 0.88
     : feetY + actorHeight * 0.62;
   return new THREE.Vector3(actor.position.x, y, actor.position.z);
@@ -3990,7 +4078,7 @@ function chooseCpuWeapon(actor, now, distance, target) {
   if (actor.reloading?.weapon === primary && hasAmmo(actor, secondary)) return secondary;
   if (actor.reloading?.weapon === secondary && hasAmmo(actor, primary)) return primary;
   if (hasAmmo(actor, primary) && actor.reloading?.weapon !== primary) {
-    if (primary === "sniper" && distance < 12 && hasAmmo(actor, secondary) && Math.random() < 0.55) return secondary;
+    if ((primary === "sniper" || primary === "bunker") && distance < 12 && hasAmmo(actor, secondary) && Math.random() < 0.55) return secondary;
     if (distance <= primaryWeapon.range || !hasAmmo(actor, secondary)) return primary;
   }
   if (hasAmmo(actor, secondary) && actor.reloading?.weapon !== secondary) return secondary;
@@ -4134,7 +4222,7 @@ function updateAimCamera(dt) {
   updateAimState();
   const scoped = aimHeld && canAimCurrentWeapon() && !gameOver && isPointerLocked() && !isPlayerSpectating();
   const targetFov = scoped
-    ? (player.weapon === "sniper" ? sniperAimFov : player.weapon === "lasergun" ? 46 : aimFov)
+    ? (player.weapon === "sniper" || player.weapon === "bunker" ? sniperAimFov : player.weapon === "lasergun" ? 46 : aimFov)
     : normalFov;
   camera.fov = THREE.MathUtils.lerp(camera.fov, targetFov, 1 - Math.pow(0.0001, dt));
   camera.updateProjectionMatrix();
@@ -4146,7 +4234,7 @@ function updateViewModel(dt) {
   if (!viewModel.visible) return;
   const aiming = aimHeld && canAimCurrentWeapon() && !gameOver && isPointerLocked();
   Object.entries(viewModel.userData.models).forEach(([weapon, model]) => {
-    model.visible = weapon === player.weapon && !(weapon === "sniper" && aiming);
+    model.visible = weapon === player.weapon && !((weapon === "sniper" || weapon === "bunker") && aiming);
   });
   updateViewModelParts();
   const pose = getViewModelPose(player.weapon, aiming);
@@ -4407,6 +4495,10 @@ function getViewModelPose(weapon, aiming) {
     sniper: {
       hip: [new THREE.Vector3(0.42, -0.42, -0.98), new THREE.Euler(-0.03, -0.07, 0)],
       aim: [new THREE.Vector3(0, -0.28, -0.78), new THREE.Euler(0, 0, 0)],
+    },
+    bunker: {
+      hip: [new THREE.Vector3(0.44, -0.43, -1.0), new THREE.Euler(-0.035, -0.08, 0)],
+      aim: [new THREE.Vector3(0, -0.28, -0.8), new THREE.Euler(0, 0, 0)],
     },
     handgun: {
       hip: [new THREE.Vector3(0.32, -0.38, -0.82), new THREE.Euler(-0.03, -0.06, 0.02)],

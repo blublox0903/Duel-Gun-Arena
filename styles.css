@@ -354,6 +354,7 @@ body.aiming.weapon-rifle .scope-overlay,
 body.aiming.weapon-trishot .scope-overlay,
 body.aiming.weapon-lasergun .scope-overlay,
 body.aiming.weapon-sniper .scope-overlay,
+body.aiming.weapon-bunker .scope-overlay,
 body.aiming.weapon-handgun .scope-overlay,
 body.aiming.weapon-revolver .scope-overlay {
   display: block;
@@ -366,7 +367,9 @@ body.aiming.weapon-trishot .scope-overlay::after,
 body.aiming.weapon-lasergun .scope-overlay::before,
 body.aiming.weapon-lasergun .scope-overlay::after,
 body.aiming.weapon-sniper .scope-overlay::before,
-body.aiming.weapon-sniper .scope-overlay::after {
+body.aiming.weapon-sniper .scope-overlay::after,
+body.aiming.weapon-bunker .scope-overlay::before,
+body.aiming.weapon-bunker .scope-overlay::after {
   background: rgb(255 57 57 / 0.72);
 }
 
@@ -391,7 +394,8 @@ body.aiming.weapon-lasergun .scope-overlay::after {
   box-shadow: 0 0 10px rgb(77 246 255 / 0.45);
 }
 
-body.aiming.weapon-sniper .scope-overlay {
+body.aiming.weapon-sniper .scope-overlay,
+body.aiming.weapon-bunker .scope-overlay {
   width: min(54vmin, 420px);
   border-color: rgb(8 12 16 / 0.9);
   box-shadow:
@@ -400,14 +404,17 @@ body.aiming.weapon-sniper .scope-overlay {
 }
 
 body.aiming.weapon-sniper .scope-overlay::before,
-body.aiming.weapon-sniper .scope-overlay::after {
+body.aiming.weapon-sniper .scope-overlay::after,
+body.aiming.weapon-bunker .scope-overlay::before,
+body.aiming.weapon-bunker .scope-overlay::after {
   content: "";
   display: block !important;
   background: rgb(255 57 57 / 0.82);
   box-shadow: 0 0 8px rgb(255 57 57 / 0.4);
 }
 
-body.aiming.weapon-sniper .scope-overlay::before {
+body.aiming.weapon-sniper .scope-overlay::before,
+body.aiming.weapon-bunker .scope-overlay::before {
   top: 50%;
   left: calc(50% - 18px);
   width: 36px;
@@ -415,7 +422,8 @@ body.aiming.weapon-sniper .scope-overlay::before {
   transform: translateY(-50%);
 }
 
-body.aiming.weapon-sniper .scope-overlay::after {
+body.aiming.weapon-sniper .scope-overlay::after,
+body.aiming.weapon-bunker .scope-overlay::after {
   top: calc(50% - 18px);
   left: 50%;
   width: 2px;
@@ -425,7 +433,10 @@ body.aiming.weapon-sniper .scope-overlay::after {
 
 body.aiming.weapon-sniper .crosshair,
 body.aiming.weapon-sniper .crosshair::before,
-body.aiming.weapon-sniper .crosshair::after {
+body.aiming.weapon-sniper .crosshair::after,
+body.aiming.weapon-bunker .crosshair,
+body.aiming.weapon-bunker .crosshair::before,
+body.aiming.weapon-bunker .crosshair::after {
   content: none;
   display: none !important;
 }
