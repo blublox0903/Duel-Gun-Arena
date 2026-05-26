@@ -166,6 +166,31 @@ def save_accounts(accounts):
     ACCOUNTS_PATH.write_text(json.dumps(accounts, indent=2, sort_keys=True), "utf-8")
 
 
+def create_account(key, account):
+    if db_available():
+        try:
+            init_db()
+            with db_connect() as conn:
+                created = conn.execute(
+                    """
+                    INSERT INTO accounts (key, data)
+                    VALUES (%s, %s::jsonb)
+                    ON CONFLICT (key) DO NOTHING
+                    RETURNING key
+                    """,
+                    (key, json.dumps(account)),
+                ).fetchone()
+            return bool(created)
+        except Exception as error:
+            print(f"Database account create failed, using file fallback: {error}")
+    accounts = load_accounts()
+    if key in accounts:
+        return False
+    accounts[key] = account
+    save_accounts(accounts)
+    return True
+
+
 def normalize_name(name):
     name = " ".join(str(name or "").strip().split())
     if not 3 <= len(name) <= 18:
@@ -239,21 +264,20 @@ async def handle_api(writer, method, raw_path, body):
             await send_json(writer, "400 Bad Request", {"ok": False, "message": "Password needs 3+ letters"})
             return
         key = name.lower()
-        if key in accounts:
-            await send_json(writer, "409 Conflict", {"ok": False, "message": "name existed, try another"})
-            return
         stored_hash = password_hash(password)
-        accounts[key] = {
+        new_account = {
             "name": name,
             "passwordHash": stored_hash,
             "stats": {"kills": 0, "playerKills": 0, "damage": 0, "playSeconds": 0, "coins": 0},
             "unlocked": FREE_WEAPONS.copy(),
         }
-        save_accounts(accounts)
+        if not create_account(key, new_account):
+            await send_json(writer, "409 Conflict", {"ok": False, "message": "name existed, try another"})
+            return
         await send_json(writer, "200 OK", {
             "ok": True,
             "token": make_token(name, stored_hash),
-            "profile": public_profile(key, accounts[key]),
+            "profile": public_profile(key, new_account),
         })
         return
 

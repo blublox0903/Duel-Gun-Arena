@@ -631,13 +631,9 @@ function saveLocalAccount(profile, token, passwordHash = null) {
 async function signInLocalAccount(name, password) {
   const accounts = loadLocalAccounts();
   const account = accounts[accountKey(name)];
-  if (!account) return null;
+  if (!account?.passwordHash) return null;
   const typedHash = await localPasswordHash(password);
-  if (account.passwordHash && account.passwordHash !== typedHash) return null;
-  account.passwordHash = typedHash;
-  accounts[accountKey(account.name)] = account;
-  saveLocalAccounts(accounts);
-  return account;
+  return account.passwordHash === typedHash ? account : null;
 }
 
 function setCurrentAccount(profile, token) {
@@ -5059,12 +5055,7 @@ document.querySelectorAll(".accountBack").forEach((button) => {
 ui.createNameForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   ui.createNameMessage.textContent = "";
-  const localAccounts = loadLocalAccounts();
   const typedName = ui.createName.value.trim();
-  if (localAccounts[accountKey(typedName)]) {
-    ui.createNameMessage.textContent = "name existed, try another";
-    return;
-  }
   try {
     const data = await apiPost("/api/check-name", { name: typedName });
     pendingCreateName = data.name;
@@ -5112,10 +5103,22 @@ ui.signInForm.addEventListener("submit", async (event) => {
   } catch (error) {
     const localAccount = await signInLocalAccount(ui.signInName.value, ui.signInPassword.value);
     if (localAccount) {
-      setCurrentAccount(localAccount, localAccount.token);
-      hideAccountDialog();
-      showMainMenu();
-      return;
+      try {
+        const recovered = await apiPost("/api/create-account", {
+          name: localAccount.name,
+          password: ui.signInPassword.value,
+        });
+        setCurrentAccount(recovered.profile, recovered.token);
+        saveLocalAccount(recovered.profile, recovered.token, await localPasswordHash(ui.signInPassword.value));
+        hideAccountDialog();
+        showMainMenu();
+        return;
+      } catch (recoveryError) {
+        if (recoveryError.message !== "name existed, try another") {
+          ui.signInMessage.textContent = "Could not connect your saved account to the server. Try again.";
+          return;
+        }
+      }
     }
     ui.signInMessage.textContent = error.message;
   }
